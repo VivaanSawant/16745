@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>RL for Dart-Throwing Arm</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@4.5.0/dist/reveal.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@4.5.0/dist/theme/black.css" />
+  <style>
+    .reveal h2 { text-transform: none; }
+    .reveal ul { font-size: 0.85em; }
+    .reveal .small { font-size: 0.75em; }
+    .flow { display: flex; align-items: center; justify-content: center; gap: 0.5em; flex-wrap: wrap; }
+    .flow span { padding: 0.25em 0.5em; background: #333; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="reveal">
+    <div class="slides">
+
+      <section>
+        <h2>Reinforcement Learning for the Dart-Throwing Arm</h2>
+        <p>Using RL to learn how the arm should move to maximize score under uncertainty</p>
+      </section>
+
+      <section>
+        <h2>The problem</h2>
+        <ul>
+          <li>We have a <strong>robot arm</strong> that throws a dart at a board.</li>
+          <li>Small changes (release timing, torque, wind) → different landing.</li>
+          <li>We don’t want one perfect throw — we want a <strong>policy</strong> that gets <strong>high expected score</strong> even with noise.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Why use RL to “figure out the arm”?</h2>
+        <ul>
+          <li>Arm dynamics + release + flight are <strong>complex and stochastic</strong>.</li>
+          <li>Closed-form “do this torque at this time” is hard to get right.</li>
+          <li>RL learns a <strong>mapping: state → action</strong> by trial and error in simulation.</li>
+          <li>The policy <em>is</em> our way of encoding “how the arm should work” for this task.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>High-level RL loop</h2>
+        <p class="flow">
+          <span>State</span> → <span>Policy (arm)</span> → <span>Action</span> → <span>Physics sim</span> → <span>Landing</span> → <span>Reward</span>
+        </p>
+        <ul class="small">
+          <li><strong>State:</strong> joint angles, joint velocities, (optional) wind estimate.</li>
+          <li><strong>Action:</strong> joint torques (e.g. wrist), release timing.</li>
+          <li><strong>Sim:</strong> our 3D projectile + dartboard (what we already built).</li>
+          <li><strong>Reward:</strong> dartboard score (and maybe smoothness / stability penalties).</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>State space</h2>
+        <ul>
+          <li>Arm: joint angles <strong>θ</strong>, joint angular velocities <strong>θ̇</strong>.</li>
+          <li>Optional: estimated wind, or dart orientation at release.</li>
+          <li>From state we can compute (or estimate) <strong>release position & velocity</strong> → then run our physics to get landing.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Action space</h2>
+        <ul>
+          <li><strong>Continuous:</strong> e.g. wrist torque, other joint torques over a short throw phase.</li>
+          <li><strong>Release timing:</strong> when to release the dart (discrete event in an otherwise continuous control).</li>
+          <li>We train a policy (e.g. neural network) that outputs these actions given the current state.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Reward</h2>
+        <ul>
+          <li><strong>Primary:</strong> dartboard score at landing (from our <code>score_at(x, y)</code>).</li>
+          <li>Optional: penalize unstable release, large torques, or variance across rollouts.</li>
+          <li>We can use <strong>expected score</strong> (Monte Carlo over many noisy rollouts) so the policy optimizes for robustness.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>How we “figure out how the arm works”</h2>
+        <ul>
+          <li>We don’t hand-design torques or timings.</li>
+          <li>We define state, action, reward and let <strong>RL (e.g. SAC, TD3, PPO)</strong> learn a policy.</li>
+          <li>The learned policy = “given this arm state (and env), do this action.”</li>
+          <li>So the arm’s behavior is <strong>discovered</strong> by the algorithm using our physics + dartboard as the environment.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Training pipeline</h2>
+        <ol>
+          <li>Build an <strong>RL environment</strong>: step(state, action) → run arm dynamics to release, then our projectile + dartboard to get landing and score.</li>
+          <li>Use a standard <strong>off-the-shelf RL algorithm</strong> (e.g. Stable-Baselines3) to train the policy.</li>
+          <li>Optionally add <strong>curriculum</strong>: start with little noise, then increase wind/release variance.</li>
+          <li>Evaluate with <strong>Monte Carlo</strong>: many rollouts per policy → distribution of landings and expected score.</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>What we already have</h2>
+        <ul>
+          <li>3D projectile physics (drag, wind).</li>
+          <li>Dartboard scoring and “hit any number.”</li>
+          <li>Release variance and Monte Carlo landings.</li>
+          <li>Simple state estimator (arm state → release pos/vel).</li>
+          <li><strong>Next:</strong> wrap this in an RL env (state/action/reward) and train a policy.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Summary</h2>
+        <ul>
+          <li>RL learns a <strong>policy</strong> that maps arm (and env) state to torques and release timing.</li>
+          <li>Our <strong>physics simulator</strong> provides the transition: action → release → trajectory → landing → score.</li>
+          <li>By maximizing expected score under noise, we get a robust “recipe” for how the arm should move — that’s what we mean by figuring out how the arm works with RL.</li>
+        </ul>
+      </section>
+
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/reveal.js@4.5.0/dist/reveal.js"></script>
+  <script>
+    Reveal.initialize({ hash: true, transition: 'slide' });
+  </script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+numpy>=1.20
+matplotlib>=3.5
+scipy>=1.7
+# Optional: load A2_mujoco_mjcf_3link_arm_SPEC.xml
+# mujoco>=3.0
