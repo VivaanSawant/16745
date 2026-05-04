@@ -1,4 +1,4 @@
-# Dart-throwing robot project (CMU 16-745 style)
+# Dart-throwing robot project
 
 This repo has two layers: **SPEC code** (matches `dart_robot_tasklist.pdf`) and **legacy prototypes** under `physics/`. Prefer the SPEC tree for anything graded or demoed against the PDF.
 
