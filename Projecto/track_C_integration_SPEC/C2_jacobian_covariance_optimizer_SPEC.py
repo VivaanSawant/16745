@@ -183,6 +183,130 @@ def summarize_release_robustness_SPEC(
     }
 
 
+def solve_release_velocity_for_target_SPEC(
+    release_position_xyz: np.ndarray,
+    target_deltas_yz_m: np.ndarray,
+    wind_xyz=(0.0, 0.0, 0.0),
+    drag_enabled: bool = True,
+    speed_bounds_mps: tuple[float, float] = (2.0, 25.0),
+    x_velocity_floor_mps: float = 0.5,
+    v0_guess_xyz: np.ndarray | None = None,
+) -> dict:
+    """
+    Inverse aiming in release space: solve for velocity that lands near target (Δy, Δz).
+    """
+    p = np.asarray(release_position_xyz, dtype=float).reshape(3)
+    target = np.asarray(target_deltas_yz_m, dtype=float).reshape(2)
+    if v0_guess_xyz is None:
+        v0_guess_xyz = np.array([6.0, target[0] * 2.0, 2.5], dtype=float)
+    v0_guess_xyz = np.asarray(v0_guess_xyz, dtype=float).reshape(3)
+    vmin, vmax = float(speed_bounds_mps[0]), float(speed_bounds_mps[1])
+
+    def objective(vxyz: np.ndarray) -> float:
+        vxyz = np.asarray(vxyz, dtype=float).reshape(3)
+        s6 = np.concatenate([p, vxyz])
+        info = landing_info_for_release_SPEC(s6, wind_xyz=wind_xyz, drag_enabled=drag_enabled)
+        if not info["hit"]:
+            # Misses are strongly penalized so optimizer prefers board-crossing states.
+            return 1e4 + 10.0 * float(np.sum(vxyz**2))
+        err = info["landing_m"] - target
+        speed = float(np.linalg.norm(vxyz))
+        speed_penalty = 0.0
+        if speed < vmin:
+            speed_penalty += 30.0 * (vmin - speed) ** 2
+        if speed > vmax:
+            speed_penalty += 30.0 * (speed - vmax) ** 2
+        if vxyz[0] < x_velocity_floor_mps:
+            speed_penalty += 50.0 * (x_velocity_floor_mps - vxyz[0]) ** 2
+        return float(np.sum(err**2) + speed_penalty)
+
+    out = minimize(
+        objective,
+        x0=v0_guess_xyz,
+        method="Nelder-Mead",
+        options={"maxiter": 200, "disp": False},
+    )
+    v_opt = np.asarray(out.x, dtype=float).reshape(3)
+    s6_opt = np.concatenate([p, v_opt])
+    landing = landing_info_for_release_SPEC(s6_opt, wind_xyz=wind_xyz, drag_enabled=drag_enabled)
+    return {
+        "success": bool(out.success),
+        "message": str(out.message),
+        "release_state6": s6_opt,
+        "velocity_xyz_mps": v_opt,
+        "landing_m": landing["landing_m"],
+        "hit": bool(landing["hit"]),
+        "objective_value": float(out.fun),
+        "iterations": int(out.nit),
+    }
+
+
+def optimize_release_state_robust_score_SPEC(
+    nominal_release6: np.ndarray,
+    Sigma_release6: np.ndarray,
+    wind_xyz=(0.0, 0.0, 0.0),
+    drag_enabled: bool = True,
+    n_mc_samples: int = 48,
+    seed: int = 0,
+    score_fn=None,
+    risk_lambda: float = 0.25,
+) -> dict:
+    """
+    Robust release-state tuning with Jacobian covariance + MC score refinement.
+    """
+    nominal_release6 = np.asarray(nominal_release6, dtype=float).reshape(6)
+    Sigma_release6 = np.asarray(Sigma_release6, dtype=float).reshape(6, 6)
+    if score_fn is None:
+        from track_B_projectile_SPEC.B3_dartboard_scoring_radial_angular_SPEC import score_from_deltas_SPEC
+
+        score_fn = score_from_deltas_SPEC
+    rng = np.random.default_rng(seed)
+
+    J = jacobian_landing_wrt_release_SPEC(nominal_release6, wind_xyz=wind_xyz, drag_enabled=drag_enabled)
+    Sigma_land_pred = predicted_landing_covariance_SPEC(J, Sigma_release6)
+
+    def sampled_score(s6_center: np.ndarray) -> tuple[float, float, float]:
+        samples = rng.multivariate_normal(s6_center, Sigma_release6, size=max(2, n_mc_samples))
+        scores = []
+        hit_count = 0
+        for s6 in samples:
+            info = landing_info_for_release_SPEC(s6, wind_xyz=wind_xyz, drag_enabled=drag_enabled)
+            if not info["hit"]:
+                scores.append(0.0)
+                continue
+            hit_count += 1
+            scores.append(float(score_fn(float(info["delta_y_m"]), float(info["delta_z_m"]))))
+        scores = np.asarray(scores, dtype=float)
+        return float(np.mean(scores)), float(np.std(scores)), float(hit_count / len(scores))
+
+    def objective(s6_center: np.ndarray) -> float:
+        s6_center = np.asarray(s6_center, dtype=float).reshape(6)
+        mean_score, std_score, _ = sampled_score(s6_center)
+        # Maximize mean score while reducing variability and keeping states near nominal.
+        reg = 0.01 * float(np.sum((s6_center - nominal_release6) ** 2))
+        return -mean_score + risk_lambda * std_score + reg
+
+    out = minimize(
+        objective,
+        x0=nominal_release6,
+        method="Nelder-Mead",
+        options={"maxiter": 120, "disp": False},
+    )
+    s6_opt = np.asarray(out.x, dtype=float).reshape(6)
+    mean_score, std_score, hit_rate = sampled_score(s6_opt)
+    return {
+        "success": bool(out.success),
+        "message": str(out.message),
+        "release_state6_opt": s6_opt,
+        "objective_value": float(out.fun),
+        "mean_score_mc": mean_score,
+        "std_score_mc": std_score,
+        "hit_rate_mc": hit_rate,
+        "jacobian_2x6_nominal": J,
+        "Sigma_land_predicted_2x2_nominal": Sigma_land_pred,
+    }
+
+
 def minimize_negative_mc_score_stub_SPEC(
     mc_objective_fn,
     x0_9params: np.ndarray,

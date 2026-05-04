@@ -31,6 +31,7 @@ from track_A_arm_SPEC.A3_cubic_spline_and_pd_controller_SPEC import (
     DEFAULT_MUJOCO_PD_KD_SPEC,
     DEFAULT_MUJOCO_PD_KP_SPEC,
     DEFAULT_MUJOCO_THROW_KNOTS_SPEC,
+    plan_nominal_throw_knots_min_jerk_SPEC,
     simulate_throw_mujoco_SPEC,
 )
 from track_C_integration_SPEC.C1_pipeline_arm_release_to_projectile_score_SPEC import (
@@ -80,13 +81,40 @@ class DartThrowEnvConfig_SPEC:
     wind_xyz: tuple[float, float, float] = (0.0, 0.0, 0.0)
     drag_enabled: bool = True
     torque_noise: bool = True
+    torque_noise_sigma_add: float = 0.5
+    torque_noise_sigma_mult: float = 0.02
     include_wind_in_obs: bool = True
     action_includes_release_time: bool = False
     kp: float = DEFAULT_MUJOCO_PD_KP_SPEC
     kd: float = DEFAULT_MUJOCO_PD_KD_SPEC
     reward_torque_l2_coeff: float = 0.0
     reward_speed_tracking_coeff: float = 0.0
+    reward_landing_l2_coeff: float = 0.0
     target_release_speed_mps: float = 5.5
+    use_residual_action: bool = False
+    residual_action_scale: float = 1.0
+    use_minimum_jerk_warm_start: bool = False
+    use_feedforward_controller: bool = False
+    inertia_ff_diag: tuple[float, float, float] | None = None
+    reward_release_weighted_l2_coeff: float = 0.0
+    # C2 sensitivity-informed default ordering: vz > vx > z > x > vy > y.
+    release_sensitivity_weights6: tuple[float, float, float, float, float, float] = (
+        0.25, 0.10, 0.40, 0.80, 0.15, 1.00
+    )
+    target_release_state6: tuple[float, float, float, float, float, float] | None = None
+
+
+def nominal_action_warm_start_SPEC(
+    q_start3: np.ndarray,
+    use_minimum_jerk: bool,
+) -> np.ndarray:
+    """
+    Return nominal knot action used to warm-start RL.
+    """
+    if not use_minimum_jerk:
+        return DEFAULT_MUJOCO_THROW_KNOTS_SPEC.copy()
+    out = plan_nominal_throw_knots_min_jerk_SPEC(q_start3=np.asarray(q_start3, dtype=float).reshape(3))
+    return out["knots9"].copy()
 
 
 class DartThrowingOneStepEnv_SPEC:
@@ -105,7 +133,11 @@ class DartThrowingOneStepEnv_SPEC:
             wind_xyz=self.config.wind_xyz,
             include_wind=self.config.include_wind_in_obs,
         )
-        self.default_action = DEFAULT_MUJOCO_THROW_KNOTS_SPEC.copy()
+        self._q_start3 = np.radians([KEYFRAME_SHOULDER_DEG, KEYFRAME_ELBOW_DEG, KEYFRAME_WRIST_DEG])
+        self.default_action = nominal_action_warm_start_SPEC(
+            q_start3=self._q_start3,
+            use_minimum_jerk=self.config.use_minimum_jerk_warm_start,
+        )
 
     @property
     def observation_dim(self) -> int:
@@ -127,6 +159,7 @@ class DartThrowingOneStepEnv_SPEC:
             "action_dim": self.action_dim,
             "observation_dim": self.observation_dim,
             "default_action": self.default_action.copy(),
+            "residual_action_mode": bool(self.config.use_residual_action),
         }
         return self._reset_obs.copy(), info
 
@@ -140,21 +173,42 @@ class DartThrowingOneStepEnv_SPEC:
             raise ValueError(f"Expected action dim {expected_dim}, got {action.size}")
 
         if self.config.action_includes_release_time:
-            knots9 = clip_knots_action_SPEC(action[:9])
-            release_time_s = float(np.clip(action[9], 0.05 * THROW_DURATION_S, 0.99 * THROW_DURATION_S))
+            raw_knots = action[:9]
+            raw_release_time = float(action[9])
         else:
-            knots9 = clip_knots_action_SPEC(action[:9])
+            raw_knots = action[:9]
+            raw_release_time = np.nan
+
+        if self.config.use_residual_action:
+            knots9 = clip_knots_action_SPEC(self.default_action + self.config.residual_action_scale * raw_knots)
+        else:
+            knots9 = clip_knots_action_SPEC(raw_knots)
+
+        if self.config.action_includes_release_time:
+            if self.config.use_residual_action:
+                base_release = 0.85 * THROW_DURATION_S
+                release_time_s = float(np.clip(
+                    base_release + self.config.residual_action_scale * raw_release_time,
+                    0.05 * THROW_DURATION_S,
+                    0.99 * THROW_DURATION_S,
+                ))
+            else:
+                release_time_s = float(np.clip(raw_release_time, 0.05 * THROW_DURATION_S, 0.99 * THROW_DURATION_S))
+        else:
             release_time_s = None
 
-        q_start3 = np.radians([KEYFRAME_SHOULDER_DEG, KEYFRAME_ELBOW_DEG, KEYFRAME_WRIST_DEG])
         sim = simulate_throw_mujoco_SPEC(
             knots9,
-            q_start3=q_start3,
+            q_start3=self._q_start3,
             release_time_s=release_time_s,
             rng=self._rng,
             torque_noise=self.config.torque_noise,
+            torque_noise_sigma_add=self.config.torque_noise_sigma_add,
+            torque_noise_sigma_mult=self.config.torque_noise_sigma_mult,
             kp=self.config.kp,
             kd=self.config.kd,
+            use_feedforward=self.config.use_feedforward_controller,
+            inertia_ff_diag=None if self.config.inertia_ff_diag is None else np.asarray(self.config.inertia_ff_diag, dtype=float),
         )
         s6 = sim["release_state6"]
         terminal_obs = np.zeros_like(self._reset_obs)
@@ -186,6 +240,21 @@ class DartThrowingOneStepEnv_SPEC:
         if self.config.reward_speed_tracking_coeff != 0.0:
             speed = float(np.linalg.norm(s6[3:]))
             reward -= float(self.config.reward_speed_tracking_coeff * abs(speed - self.config.target_release_speed_mps))
+        landing_l2_error_m = np.nan
+        if self.config.reward_landing_l2_coeff != 0.0:
+            if rollout["hit"]:
+                landing_l2_error_m = float(np.linalg.norm(landing["landing_m"]))
+            else:
+                # Strong dense penalty for misses; treated as ~1m miss radius.
+                landing_l2_error_m = 1.0
+            reward -= float(self.config.reward_landing_l2_coeff * landing_l2_error_m)
+        release_weighted_error = np.nan
+        if self.config.reward_release_weighted_l2_coeff != 0.0 and self.config.target_release_state6 is not None:
+            target = np.asarray(self.config.target_release_state6, dtype=float).reshape(6)
+            weights = np.asarray(self.config.release_sensitivity_weights6, dtype=float).reshape(6)
+            diff = s6 - target
+            release_weighted_error = float(np.sqrt(np.sum(weights * diff * diff)))
+            reward -= float(self.config.reward_release_weighted_l2_coeff * release_weighted_error)
 
         info = {
             "score": float(rollout["score"]),
@@ -194,8 +263,11 @@ class DartThrowingOneStepEnv_SPEC:
             "delta_z_m": float(rollout["delta_z_m"]) if rollout["hit"] else np.nan,
             "release_state6": s6.copy(),
             "landing_m": landing["landing_m"].copy(),
+            "landing_l2_error_m": landing_l2_error_m,
+            "release_weighted_error": release_weighted_error,
             "release_time_s": float(sim["release_time_s"]),
             "knots9_used": knots9.copy(),
+            "default_action_knots9": self.default_action.copy(),
             "terminal_observation": terminal_obs.copy(),
         }
         return terminal_obs, reward, True, False, info

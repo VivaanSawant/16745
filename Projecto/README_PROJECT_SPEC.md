@@ -26,3 +26,23 @@ Dependencies: `numpy`, `scipy`, `matplotlib`. Optional: `mujoco` to load `A2_muj
 ## Naming convention
 
 Files that implement the PDF end with **`_SPEC`** so you can search the codebase for `SPEC` and find spec-driven modules only.
+
+## Current state summary
+
+- Pre-RL validation pipeline C5-C9 is implemented and currently passes end-to-end.
+- Current handoff artifact reports `RL start gate = True`.
+- Core stack (A/B/C + spin relevance package) is stable for RL experiments.
+- Full training loops and policy baselines (PPO/SAC/TD3) are still pending implementation.
+
+## What changed most recently
+
+- Added deterministic lockdown, uncertainty calibration, spin/contact confidence, stress readiness, and handoff scripts (`VALIDATION_C5_...` through `VALIDATION_C9_...`).
+- Updated C8 to an operational-readiness gate (non-statistical), aligned with current project intent.
+- Refreshed artifacts and randomization-bound recommendations under `artifacts_SPEC/`.
+
+## Suggested paper inclusions
+
+- Architecture: OC-informed release optimization + residual RL scaffold.
+- Validation table: C5-C9 outputs and gate outcomes.
+- Assumptions/ranges: include randomization bounds from `artifacts_SPEC/C9_pre_rl_handoff_SPEC.md`.
+- Limitations: no full RL training code yet; C2 linearization is local.

@@ -46,6 +46,93 @@ from dart_robot_spec.SPEC_QUICK_REFERENCE_constants import (
 from track_A_arm_SPEC.A1_link_geometry_and_inertia_SPEC import clamp_joint_vector_SPEC
 
 
+def minimum_jerk_progress_SPEC(u: float) -> float:
+    """Quintic minimum-jerk progress scalar in [0, 1]."""
+    u = float(np.clip(u, 0.0, 1.0))
+    return 10.0 * u**3 - 15.0 * u**4 + 6.0 * u**5
+
+
+def minimum_jerk_progress_dot_SPEC(u: float) -> float:
+    """d/du of minimum-jerk progress."""
+    u = float(np.clip(u, 0.0, 1.0))
+    return 30.0 * u**2 - 60.0 * u**3 + 30.0 * u**4
+
+
+def minimum_jerk_progress_ddot_SPEC(u: float) -> float:
+    """d²/du² of minimum-jerk progress."""
+    u = float(np.clip(u, 0.0, 1.0))
+    return 60.0 * u - 180.0 * u**2 + 120.0 * u**3
+
+
+def minimum_jerk_joint_reference_SPEC(
+    t_s: float,
+    q_start3: np.ndarray,
+    q_goal3: np.ndarray,
+    duration_s: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Minimum-jerk reference (q, qdot, qddot) between two 3D joint postures.
+    """
+    T = max(float(duration_s), 1e-6)
+    u = np.clip(float(t_s) / T, 0.0, 1.0)
+    q_start3 = np.asarray(q_start3, dtype=float).reshape(3)
+    q_goal3 = np.asarray(q_goal3, dtype=float).reshape(3)
+    dq = q_goal3 - q_start3
+
+    s = minimum_jerk_progress_SPEC(u)
+    s_u = minimum_jerk_progress_dot_SPEC(u)
+    s_uu = minimum_jerk_progress_ddot_SPEC(u)
+
+    q = q_start3 + s * dq
+    qd = (s_u / T) * dq
+    qdd = (s_uu / (T**2)) * dq
+    return q, qd, qdd
+
+
+def nominal_minimum_jerk_knots_SPEC(
+    q_start3: np.ndarray,
+    q_goal3: np.ndarray,
+) -> np.ndarray:
+    """
+    Build the 9D knot vector from a minimum-jerk profile sampled at 1/3, 2/3, and 1.
+    """
+    q_start3 = np.asarray(q_start3, dtype=float).reshape(3)
+    q_goal3 = np.asarray(q_goal3, dtype=float).reshape(3)
+    knots = []
+    for joint_idx in range(3):
+        q0 = q_start3[joint_idx]
+        q1 = q_goal3[joint_idx]
+        dq = q1 - q0
+        for u in (1.0 / 3.0, 2.0 / 3.0, 1.0):
+            knots.append(q0 + minimum_jerk_progress_SPEC(u) * dq)
+    return np.asarray(knots, dtype=float)
+
+
+def plan_nominal_throw_knots_min_jerk_SPEC(
+    q_start3: np.ndarray,
+    q_goal3: np.ndarray | None = None,
+    alpha_goal: float = 0.25,
+) -> dict:
+    """
+    Create a minimum-jerk nominal throw in knot space for warm starts / OC scaffolding.
+
+    The default goal posture is a blended extension toward the current overhand preset
+    so this planner stays consistent with the tuned working motion in this repository.
+    """
+    q_start3 = np.asarray(q_start3, dtype=float).reshape(3)
+    if q_goal3 is None:
+        preset_goal = DEFAULT_MUJOCO_OVERHAND_THROW_KNOTS_SPEC.reshape(3, 3)[:, -1]
+        q_goal3 = (1.0 - alpha_goal) * q_start3 + alpha_goal * preset_goal
+    else:
+        q_goal3 = np.asarray(q_goal3, dtype=float).reshape(3)
+    knots9 = nominal_minimum_jerk_knots_SPEC(q_start3, q_goal3)
+    return {
+        "knots9": knots9,
+        "q_start3": q_start3.copy(),
+        "q_goal3": q_goal3.copy(),
+    }
+
+
 def rot_y_unit_x_SPEC(cumulative_angle_rad: float, length_m: float) -> np.ndarray:
     """Vector from rotating (length,0,0) about +y by cumulative_angle_rad."""
     c = math.cos(cumulative_angle_rad)
@@ -134,11 +221,52 @@ def cubic_spline_q_des_SPEC(t_s: float, q_start3: np.ndarray, knots9: np.ndarray
     return q_des, qd_des
 
 
+def cubic_spline_qdd_des_SPEC(t_s: float, q_start3: np.ndarray, knots9: np.ndarray, duration_s: float) -> np.ndarray:
+    """
+    Desired joint acceleration from the cubic Bezier parameterization used in A3.
+    """
+    q_start3 = np.asarray(q_start3, dtype=float).reshape(3)
+    k = np.asarray(knots9, dtype=float).reshape(9)
+    T = max(duration_s, 1e-6)
+    u = np.clip(t_s / T, 0.0, 1.0)
+
+    qdd_des = np.zeros(3)
+    for j in range(3):
+        p0 = q_start3[j]
+        p1 = k[j * 3 + 0]
+        p2 = k[j * 3 + 1]
+        p3 = k[j * 3 + 2]
+        bdd = 6 * (1 - u) * (p2 - 2 * p1 + p0) + 6 * u * (p3 - 2 * p2 + p1)
+        qdd_des[j] = bdd / (T**2)
+    return qdd_des
+
+
 def pd_torque_SPEC(q: np.ndarray, qdot: np.ndarray, q_des: np.ndarray, qd_des: np.ndarray, kp=None, kd=None) -> np.ndarray:
     """**PDF A3:** τ = Kp (q* - q) + Kd (q̇* - q̇)."""
     kp = PD_KP_DEFAULT if kp is None else kp
     kd = PD_KD_DEFAULT if kd is None else kd
     return kp * (q_des - q) + kd * (qd_des - qdot)
+
+
+def feedforward_pd_torque_SPEC(
+    q: np.ndarray,
+    qdot: np.ndarray,
+    q_des: np.ndarray,
+    qd_des: np.ndarray,
+    qdd_des: np.ndarray,
+    kp=None,
+    kd=None,
+    inertia_diag: np.ndarray | None = None,
+) -> np.ndarray:
+    """
+    Lightweight computed-torque style controller: tau_ff + PD correction.
+    """
+    if inertia_diag is None:
+        # Matches the simple diagonal inertia magnitudes used in simulate_throw_pd_SPEC.
+        inertia_diag = np.array([1.0, 0.8, 0.3], dtype=float)
+    M_diag = np.asarray(inertia_diag, dtype=float).reshape(3)
+    tau_ff = M_diag * np.asarray(qdd_des, dtype=float).reshape(3)
+    return tau_ff + pd_torque_SPEC(q, qdot, q_des, qd_des, kp=kp, kd=kd)
 
 
 def perturb_torque_SPEC(tau: np.ndarray, rng: np.random.Generator, sigma_add=0.5, sigma_mult=0.02) -> np.ndarray:
@@ -183,8 +311,12 @@ def simulate_throw_mujoco_SPEC(
     release_time_s: float | None = None,
     rng: "np.random.Generator | None" = None,
     torque_noise: bool = False,
+    torque_noise_sigma_add: float = 0.5,
+    torque_noise_sigma_mult: float = 0.02,
     kp: float | None = None,
     kd: float | None = None,
+    use_feedforward: bool = False,
+    inertia_ff_diag: np.ndarray | None = None,
     enforce_joint_limits: bool = True,
 ) -> dict:
     """
@@ -245,16 +377,34 @@ def simulate_throw_mujoco_SPEC(
         qd = d.qvel[:3].copy()
 
         q_des, qd_des = cubic_spline_q_des_SPEC(t, q_start3, knots9, duration_s)
-        tau = pd_torque_SPEC(
-            q,
-            qd,
-            q_des,
-            qd_des,
-            kp=DEFAULT_MUJOCO_PD_KP_SPEC if kp is None else kp,
-            kd=DEFAULT_MUJOCO_PD_KD_SPEC if kd is None else kd,
-        )
+        if use_feedforward:
+            qdd_des = cubic_spline_qdd_des_SPEC(t, q_start3, knots9, duration_s)
+            tau = feedforward_pd_torque_SPEC(
+                q,
+                qd,
+                q_des,
+                qd_des,
+                qdd_des,
+                kp=DEFAULT_MUJOCO_PD_KP_SPEC if kp is None else kp,
+                kd=DEFAULT_MUJOCO_PD_KD_SPEC if kd is None else kd,
+                inertia_diag=inertia_ff_diag,
+            )
+        else:
+            tau = pd_torque_SPEC(
+                q,
+                qd,
+                q_des,
+                qd_des,
+                kp=DEFAULT_MUJOCO_PD_KP_SPEC if kp is None else kp,
+                kd=DEFAULT_MUJOCO_PD_KD_SPEC if kd is None else kd,
+            )
         if torque_noise:
-            tau = perturb_torque_SPEC(tau, rng)
+            tau = perturb_torque_SPEC(
+                tau,
+                rng,
+                sigma_add=torque_noise_sigma_add,
+                sigma_mult=torque_noise_sigma_mult,
+            )
 
         ts.append(t)
         qs.append(q.copy())

@@ -38,6 +38,9 @@ from dart_robot_spec.SPEC_QUICK_REFERENCE_constants import (
     OCHE_TO_BOARD_X_M,
     BULLSEYE_CENTER_Z_M,
     R_BOARD_MISS_MM,
+    TORQUE_LIMIT_SHOULDER_NM,
+    TORQUE_LIMIT_ELBOW_NM,
+    TORQUE_LIMIT_WRIST_NM,
 )
 from track_A_arm_SPEC.A1_link_geometry_and_inertia_SPEC import joint_limits_rad_SPEC
 import mujoco
@@ -116,11 +119,24 @@ def sample_throw_speed_SPEC() -> dict:
         return out
     spd = float(np.linalg.norm(s6[3:6]))
     assert s6[3] > 0.0, f"A4 regression: expected forward release vx>0, got vx={s6[3]:.3f} m/s"
+    assert 5.0 <= spd <= 7.0, (
+        f"A4 regression: expected release speed in [5,7] m/s, got {spd:.3f} m/s"
+    )
+    tau = np.asarray(out["tau"], dtype=float)
+    limits = np.array(
+        [TORQUE_LIMIT_SHOULDER_NM, TORQUE_LIMIT_ELBOW_NM, TORQUE_LIMIT_WRIST_NM],
+        dtype=float,
+    )
+    sat_ratio = np.mean(np.abs(tau) >= limits[None, :], axis=0) if tau.size else np.zeros(3)
     print("--- A4 release speed check (MuJoCo dynamics) ---")
     print("  Preset: overhand A4 visualization (higher release, longer negative-shoulder phase)")
     print(f"  |v_release| = {spd:.3f} m/s  (PDF target band 5 to 7 m/s)")
     print(f"  v_release (vx,vy,vz) = {s6[3]:.3f}, {s6[4]:.3f}, {s6[5]:.3f} m/s")
     print(f"  Release pos (x,y,z) = {s6[0]:.3f}, {s6[1]:.3f}, {s6[2]:.3f}")
+    print(
+        "  actuator saturation ratio (shoulder/elbow/wrist): "
+        f"{sat_ratio[0]:.2%}, {sat_ratio[1]:.2%}, {sat_ratio[2]:.2%}"
+    )
     return out
 
 

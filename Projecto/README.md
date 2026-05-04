@@ -11,6 +11,7 @@ This repo has two layers: **SPEC code** (matches `dart_robot_tasklist.pdf`) and 
 | File | Purpose |
 |------|---------|
 | `README.md` | This file: file map + completion status. |
+| `HIGH_LEVEL_CONTROL_STRATEGY.md` | Architectural overview of the hybrid optimal-control + RL approach and why it suits this system. |
 | `README_PROJECT_SPEC.md` | Short pointer to folders and how to run the SPEC demo. |
 | `README_physics.md` | Describes the **older** `physics/` package (different coordinates than the PDF). |
 | `requirements.txt` | Python dependencies (`numpy`, `scipy`, `matplotlib`; `mujoco` optional for XML). |
@@ -31,7 +32,8 @@ This repo has two layers: **SPEC code** (matches `dart_robot_tasklist.pdf`) and 
 |------|---------|
 | `A1_link_geometry_and_inertia_SPEC.py` | Documents link lengths/masses/limits; helpers for inertia formula and joint clamping. |
 | `A2_mujoco_mjcf_3link_arm_SPEC.xml` | MuJoCo model: fixed shoulder mount, 3 hinges, capsules, 3 motors, `release_site`, cocked keyframe. |
-| `A3_cubic_spline_and_pd_controller_SPEC.py` | 9 knot parameters → desired joint trajectory; PD torques; optional torque noise; FK for fingertip; **simplified** joint integration (stand-in until MuJoCo steps the arm). |
+| `A3_cubic_spline_and_pd_controller_SPEC.py` | 9-knot trajectory parameterization for MuJoCo rollouts; PD and optional feedforward+PD control; optional torque noise; release-state extraction; minimum-jerk nominal planning helpers. |
+| `VALIDATION_A3_regression_suite_SPEC.py` | Assertion-based A3 regression checks: FK parity, Jacobian velocity parity, deterministic golden rollout, and torque-feasibility diagnostics. |
 | `VALIDATION_A4_workspace_release_speed_SPEC.py` | Coarse joint grid → max fingertip `x,z`; one sample throw → reports release speed. |
 | `__init__.py` | Package marker. |
 
@@ -50,8 +52,16 @@ This repo has two layers: **SPEC code** (matches `dart_robot_tasklist.pdf`) and 
 | File | Purpose |
 |------|---------|
 | `C1_pipeline_arm_release_to_projectile_score_SPEC.py` | Takes 6D release state → B2 → B3 → score; Monte Carlo helper with a user-supplied release sampler. |
-| `C2_jacobian_covariance_optimizer_SPEC.py` | Finite-difference **2×6** Jacobian of landing vs release; `Σ_land ≈ J Σ Jᵀ`; Nelder–Mead **stub** for “minimize negative MC score”. |
-| `VALIDATION_C1_end_to_end_and_monte_carlo_SPEC.py` | One nominal score + small MC with simple velocity noise (not full arm torque noise yet). |
+| `C2_jacobian_covariance_optimizer_SPEC.py` | Finite-difference **2×6** Jacobian of landing vs release; `Σ_land ≈ J Σ Jᵀ`; inverse release-velocity aiming and robust release-state optimization with MC refinement. |
+| `VALIDATION_C1_end_to_end_and_monte_carlo_SPEC.py` | One nominal score + arm-driven MC where uncertainty comes from noisy MuJoCo torque rollouts. |
+| `VALIDATION_C2_jacobian_ellipse_vs_mc_SPEC.py` | Quantitative Jacobian-vs-MC validation: covariance error, 95% coverage, epsilon sensitivity, and optimizer benchmark. |
+| `VALIDATION_C3_control_robustness_sweep_SPEC.py` | Short sweep comparing direct, residual, and feedforward+PD variants with release/landing covariance and score variance. |
+| `VALIDATION_C4_accuracy_brownie_pack_SPEC.py` | Accuracy extras: projectile-parameter sensitivity, torque-noise covariance calibration, and risk-objective ablation. |
+| `VALIDATION_C5_deterministic_lockdown_SPEC.py` | Deterministic parity + golden-rollout lockdown with XML/controller matrix checks. |
+| `VALIDATION_C6_uncertainty_calibration_99ci_SPEC.py` | Uncertainty calibration with 99% CI tables for torque/release settings and spin-lift sensitivity. |
+| `VALIDATION_C7_spin_contact_confidence_SPEC.py` | Multi-seed axial-spin/contact validation with CI-based slope significance and relevance criteria. |
+| `VALIDATION_C8_stress_campaign_gate_SPEC.py` | Cross-seed stress campaign scoreboard with non-statistical operational-readiness checks before RL start. |
+| `VALIDATION_C9_pre_rl_handoff_SPEC.py` | Final pre-RL handoff generator that runs C5-C8 and emits the RL-start gate summary. |
 | `__init__.py` | Package marker. |
 
 ### `artifacts_SPEC/` (generated, may be empty until you run validations)
@@ -60,7 +70,7 @@ This repo has two layers: **SPEC code** (matches `dart_robot_tasklist.pdf`) and 
 |---------|---------|
 | `B4_side_view_xz_SPEC.png`, `B4_board_view_deltas_SPEC.png` | Written by `VALIDATION_B4_drag_comparison_and_plots_SPEC.py`. |
 
-### `physics/` (**legacy** — not PDF world frame)
+### `physics/` (**legacy** — not PDF world frame; not part of official SPEC pipeline)
 
 | File | Purpose |
 |------|---------|
@@ -91,8 +101,8 @@ Legend: **Done** = implemented and exercised in code/scripts. **Partial** = star
 |------|--------|--------|
 | A1 Link geometry, limits, masses, shoulder position | **Done** | In constants + `A1_…py` + MJCF. |
 | A2 MJCF + motors + keyframe | **Done** | `A2_mujoco_mjcf_3link_arm_SPEC.xml`. Loading in MuJoCo locally is **your** check (`mujoco` optional). |
-| A3 Cubic spline (9 params) + PD + noise hooks + release state | **Partial** | Spline + PD + FK + **simplified** diagonal “fake” inertia integration, not `mj_step` on the XML. |
-| A4 Workspace, 5–7 m/s release, stick-figure / MuJoCo render | **Partial** | Grid workspace + one release speed printed; **no** MuJoCo stick-figure render script. |
+| A3 Cubic spline (9 params) + PD + noise hooks + release state | **Done** | MuJoCo `mj_step` simulation, release-site extraction, optional feedforward+PD mode, and minimum-jerk nominal planning are implemented. |
+| A4 Workspace, 5–7 m/s release, stick-figure / MuJoCo render | **Done** | Grid workspace checks, hard release-speed assertion, stick-figure PNG, and MuJoCo replay video are implemented. |
 
 ### PDF Track B (projectile + board)
 
@@ -107,15 +117,31 @@ Legend: **Done** = implemented and exercised in code/scripts. **Partial** = star
 
 | Item | Status | Notes |
 |------|--------|--------|
-| C1 Wire release → projectile → score; MC | **Partial** | Wiring **Done**. MC in validation uses **velocity noise only**; PDF also wants torque noise + release-time jitter from the **arm** sim. |
-| C2 Jacobian + predicted covariance + optimizer | **Partial** | Jacobian + `Σ_land` formula **Done**. Nelder–Mead wrapper **stub** only (you pass `mc_objective_fn`). **Not done:** full study comparing ellipse to MC scatter, warm-started target optimization. |
+| C1 Wire release → projectile → score; MC | **Done** | Wiring and arm-driven MC are implemented; uncertainty is propagated from torque-noisy MuJoCo rollouts. |
+| C2 Jacobian + predicted covariance + optimizer | **Partial** | Jacobian/covariance, inverse aiming, robust optimization, and quantitative C2-vs-MC metrics are implemented. Remaining work is broader comparative studies and full RL-coupled closed-loop evaluation. |
 
 ### Other project goals (from your earlier proposal)
 
 | Item | Status | Notes |
 |------|--------|--------|
-| RL environment (Gymnasium / SB3) | **Not done** | Slides describe it; no training code in repo. |
+| RL environment (Gymnasium / SB3) | **Partial** | A one-step environment scaffold exists with warm-start and residual-action options, but no full training loop or SB3 integration yet. |
 | MuJoCo arm + projectile in one loop | **Not done** | XML exists; Python still uses analytic B2 for flight after release. |
+
+---
+
+## Current integrated state (May 2026)
+
+- Pre-RL validation chain C5-C9 is implemented and runnable end-to-end.
+- Latest generated handoff reports `RL start gate = True` under the current operational-readiness interpretation of C8.
+- Arm and projectile modules are stable enough to begin RL experiments, while final algorithm/training-loop work remains open.
+- Spin is retained as axial-first in the production model scope, with contact-manipulation evidence available for discussion.
+
+## Paper-ready highlights to include
+
+- **Method structure:** layered OC+RL design (nominal motion, release robustness, residual RL adaptation).
+- **Validation evidence:** deterministic parity/golden checks (C5), uncertainty calibration (C6), spin/contact relevance (C7), stress readiness (C8), integrated handoff (C9).
+- **Known limits:** one-step env scaffold (no full PPO/SAC/TD3 loop yet), local linearization caveat for C2, and post-retune need to rerun C8/C9.
+- **Reproducibility:** cite script entry points (`VALIDATION_C5_...` to `VALIDATION_C9_...`) and artifacts under `artifacts_SPEC/`.
 
 ---
 

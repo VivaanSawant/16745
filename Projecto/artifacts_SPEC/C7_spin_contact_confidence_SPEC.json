@@ -1,0 +1,42 @@
+{
+  "phase": "spin_contact_confidence",
+  "seeds": [
+    7,
+    13,
+    19,
+    29,
+    37
+  ],
+  "max_shift_mm_ci99": [
+    121.491171791109,
+    124.63170876959622
+  ],
+  "max_score_delta_ci99": [
+    3.9975,
+    7.811000000000001
+  ],
+  "max_radial_delta_mm_ci99": [
+    49.04576764517761,
+    61.55048341646108
+  ],
+  "wrist_slope_ci99": [
+    0.22060073079748108,
+    0.22060073079748108
+  ],
+  "release_time_slope_ci99": [
+    425.0111961080419,
+    425.0111961080419
+  ],
+  "wrist_radial_slope_ci99": [
+    -0.026759128690454784,
+    -0.026759128690454784
+  ],
+  "release_time_radial_slope_ci99": [
+    3.856522499341157,
+    3.856522499341157
+  ],
+  "wrist_significant": true,
+  "release_time_significant": true,
+  "spin_relevant": true,
+  "phase_pass": true
+}

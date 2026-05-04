@@ -1,0 +1,49 @@
+{
+  "phase_status": {
+    "C5_deterministic_lockdown": true,
+    "C6_uncertainty_calibration_99ci": true,
+    "C7_spin_contact_confidence": true,
+    "C8_stress_campaign_gate": true
+  },
+  "all_phases_pass": true,
+  "recommended_randomization_bounds": {
+    "torque_noise_sigma_add": [
+      0.4,
+      0.6
+    ],
+    "torque_noise_sigma_mult": [
+      0.015,
+      0.025
+    ],
+    "wind_x_mps": [
+      -0.25,
+      0.25
+    ],
+    "wind_y_mps": [
+      -0.15,
+      0.15
+    ],
+    "release_time_jitter_s": [
+      -0.008,
+      0.008
+    ],
+    "spin_c_lift": [
+      0.004,
+      0.008
+    ],
+    "axial_spin_rad_s": [
+      0.0,
+      40.0
+    ]
+  },
+  "residual_risks": [
+    "release-time proxy channel may be weak in some seeds; keep lower control authority than wrist channel",
+    "covariance linearization remains local; monitor off-nominal drift during RL domain randomization",
+    "stress gate margins should be re-evaluated after any controller retune"
+  ],
+  "assumptions_locked": [
+    "axial-spin-first model is the production spin model",
+    "feedforward+PD and direct-PD are both kept as valid controller baselines",
+    "tall-arm MJCF is primary for pre-RL studies"
+  ]
+}

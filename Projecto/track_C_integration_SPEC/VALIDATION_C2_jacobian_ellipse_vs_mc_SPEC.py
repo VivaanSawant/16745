@@ -38,8 +38,10 @@ from track_C_integration_SPEC.C1_pipeline_arm_release_to_projectile_score_SPEC i
     score_from_release_state_SPEC,
 )
 from track_C_integration_SPEC.C2_jacobian_covariance_optimizer_SPEC import (
+    jacobian_landing_wrt_release_SPEC,
     landing_info_for_release_SPEC,
     minimize_negative_mc_score_stub_SPEC,
+    predicted_landing_covariance_SPEC,
     summarize_release_robustness_SPEC,
 )
 
@@ -56,6 +58,7 @@ _TUNED_KNOTS9 = np.radians(np.array([
 _TUNED_KP = 318.1900570627695
 _TUNED_KD = 0.6954130109241007
 _TUNED_RELEASE_TIME_S = 0.0761809061781466
+_CHI2_DOF2_95 = 5.991464547107979
 
 def _covariance_ellipse(cov2x2: np.ndarray, n_std: float = 2.0, n_pts: int = 200) -> np.ndarray:
     """Return (n_pts, 2) points tracing the n_std-sigma covariance ellipse."""
@@ -65,6 +68,50 @@ def _covariance_ellipse(cov2x2: np.ndarray, n_std: float = 2.0, n_pts: int = 200
     circle = np.stack([np.cos(angle), np.sin(angle)], axis=1)
     scale = n_std * np.sqrt(vals)
     return circle @ (vecs * scale).T
+
+
+def _mahalanobis_coverage_SPEC(points2: np.ndarray, mean2: np.ndarray, cov2x2: np.ndarray, threshold: float = _CHI2_DOF2_95) -> float:
+    """
+    Fraction of points inside covariance ellipse defined by Mahalanobis threshold.
+    """
+    points2 = np.asarray(points2, dtype=float).reshape(-1, 2)
+    mean2 = np.asarray(mean2, dtype=float).reshape(2)
+    cov2x2 = np.asarray(cov2x2, dtype=float).reshape(2, 2)
+    if points2.size == 0:
+        return 0.0
+    cov_reg = cov2x2 + 1e-12 * np.eye(2)
+    inv_cov = np.linalg.inv(cov_reg)
+    centered = points2 - mean2[None, :]
+    d2 = np.einsum("bi,ij,bj->b", centered, inv_cov, centered)
+    return float(np.mean(d2 <= threshold))
+
+
+def _relative_covariance_error_SPEC(pred2x2: np.ndarray, emp2x2: np.ndarray) -> float:
+    """Relative Frobenius error ||pred-emp||_F / ||emp||_F."""
+    pred2x2 = np.asarray(pred2x2, dtype=float).reshape(2, 2)
+    emp2x2 = np.asarray(emp2x2, dtype=float).reshape(2, 2)
+    den = float(np.linalg.norm(emp2x2, ord="fro"))
+    if den < 1e-12:
+        return 0.0
+    return float(np.linalg.norm(pred2x2 - emp2x2, ord="fro") / den)
+
+
+def _eps_sensitivity_SPEC(
+    nominal_release6: np.ndarray,
+    sigma_release6: np.ndarray,
+    eps_values: tuple[float, ...] = (1e-5, 3e-5, 1e-4, 3e-4),
+) -> list[dict]:
+    """Finite-difference epsilon sweep for predicted landing covariance."""
+    rows = []
+    for eps in eps_values:
+        J = jacobian_landing_wrt_release_SPEC(nominal_release6, eps=eps)
+        sigma_pred = predicted_landing_covariance_SPEC(J, sigma_release6)
+        rows.append({
+            "eps": float(eps),
+            "jacobian_fro_norm": float(np.linalg.norm(J, ord="fro")),
+            "sigma_pred_trace_mm2": float(np.trace(sigma_pred) * 1e6),
+        })
+    return rows
 
 
 def run_mc_and_collect_states(
@@ -165,8 +212,26 @@ def jacobian_comparison_SPEC(n_mc: int = 80, seed: int = 42):
           f"where the Jacobian linearisation does not hold.")
     pred = summary['Sigma_land_predicted_2x2']
     emp  = summary['Sigma_land_empirical_2x2']
+    hit_landings = landings[hit_mask]
     print(f"  Predicted Σ_land (mm²):\n{pred*1e6}")
     print(f"  Empirical  Σ_land (mm²):\n{emp*1e6}")
+    rel_err = _relative_covariance_error_SPEC(pred, emp)
+    print(f"  Relative covariance error ||Σ_pred-Σ_emp||_F / ||Σ_emp||_F = {rel_err:.3f}")
+
+    mu_nom = np.array([nom_score["delta_y_m"], nom_score["delta_z_m"]], dtype=float)
+    mu_emp = np.mean(hit_landings, axis=0) if hit_landings.size else mu_nom
+    coverage_pred95 = _mahalanobis_coverage_SPEC(hit_landings, mu_nom, pred, threshold=_CHI2_DOF2_95)
+    coverage_emp95 = _mahalanobis_coverage_SPEC(hit_landings, mu_emp, emp, threshold=_CHI2_DOF2_95)
+    print(f"  95% ellipse coverage (predicted, centered at nominal): {coverage_pred95:.2%}")
+    print(f"  95% ellipse coverage (empirical, centered at empirical mean): {coverage_emp95:.2%}")
+
+    eps_rows = _eps_sensitivity_SPEC(s6_nom, summary["Sigma_release_6x6"])
+    print("  FD epsilon sensitivity (J and predicted trace):")
+    for row in eps_rows:
+        print(
+            f"    eps={row['eps']:.1e} | ||J||_F={row['jacobian_fro_norm']:.4f} "
+            f"| trace(Σ_pred)={row['sigma_pred_trace_mm2']:.2f} mm²"
+        )
     ratio = np.trace(emp) / max(np.trace(pred), 1e-12)
     print(f"  Trace ratio empirical/predicted: {ratio:.2f}x  "
           f"({'good agreement' if ratio < 3 else 'linearisation underestimates — noise is large'})")
@@ -174,12 +239,16 @@ def jacobian_comparison_SPEC(n_mc: int = 80, seed: int = 42):
     for row in summary["sensitivity_ranking"][:3]:
         print(f"    {row['label']}: trace contribution={row['landing_trace_contribution']*1e6:.1f} mm², "
               f"release variance={row['release_variance']:.4f}")
+    print("  Uncertainty summary:")
+    print(
+        f"    release std (x,y,z,vx,vy,vz): "
+        f"{np.sqrt(np.clip(np.diag(summary['Sigma_release_6x6']), 0.0, None))}"
+    )
 
     # ---- Plot ----
     fig, ax = plt.subplots(figsize=(6, 6))
 
     # MC scatter
-    hit_landings = landings[hit_mask]
     ax.scatter(hit_landings[:, 0]*1e3, hit_landings[:, 1]*1e3,
                s=12, alpha=0.5, color="steelblue", label="MC landings")
 

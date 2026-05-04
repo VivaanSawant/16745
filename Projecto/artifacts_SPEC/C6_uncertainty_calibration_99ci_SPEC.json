@@ -1,0 +1,155 @@
+{
+  "phase": "uncertainty_calibration_99ci",
+  "target_trace_sigma_release": 0.0024473173602277114,
+  "target_mean_score": 21.666666666666668,
+  "candidates": [
+    {
+      "sigma_add": 0.3,
+      "sigma_mult": 0.01,
+      "trace_mean": 0.0009367155938127539,
+      "trace_ci99": [
+        0.0008279867529532201,
+        0.0009943087279601294
+      ],
+      "score_mean": 26.6,
+      "score_ci99": [
+        24.52,
+        29.47
+      ],
+      "fit_error_mean": 0.8449403160480375,
+      "fit_error_ci99": [
+        0.7351721612464546,
+        1.0217503836073565
+      ]
+    },
+    {
+      "sigma_add": 0.4,
+      "sigma_mult": 0.015,
+      "trace_mean": 0.0016798514518033658,
+      "trace_ci99": [
+        0.0014804748177675892,
+        0.0017800968295319825
+      ],
+      "score_mean": 25.775,
+      "score_ci99": [
+        24.25,
+        27.9875
+      ],
+      "fit_error_mean": 0.5032101479659524,
+      "fit_error_ci99": [
+        0.39186420106065134,
+        0.6866144510116531
+      ]
+    },
+    {
+      "sigma_add": 0.5,
+      "sigma_mult": 0.02,
+      "trace_mean": 0.0026409464391209366,
+      "trace_ci99": [
+        0.002321703848959524,
+        0.002794054607860938
+      ],
+      "score_mean": 24.425,
+      "score_ci99": [
+        22.28,
+        25.9975
+      ],
+      "fit_error_mean": 0.2281118377973109,
+      "fit_error_ci99": [
+        0.1695694326355576,
+        0.2996835175345584
+      ]
+    },
+    {
+      "sigma_add": 0.6,
+      "sigma_mult": 0.025,
+      "trace_mean": 0.003820581729585134,
+      "trace_ci99": [
+        0.003350777397564003,
+        0.004035832544641691
+      ],
+      "score_mean": 24.2775,
+      "score_ci99": [
+        21.89875,
+        26.13475
+      ],
+      "fit_error_mean": 0.681630481757236,
+      "fit_error_ci99": [
+        0.5667727661757813,
+        0.8090539425942955
+      ]
+    },
+    {
+      "sigma_add": 0.7,
+      "sigma_mult": 0.03,
+      "trace_mean": 0.005218584238134253,
+      "trace_ci99": [
+        0.004565944633636534,
+        0.005504368717018672
+      ],
+      "score_mean": 23.427500000000002,
+      "score_ci99": [
+        20.99,
+        24.6775
+      ],
+      "fit_error_mean": 1.2271000005137478,
+      "fit_error_ci99": [
+        0.9814629523271464,
+        1.3339724203516043
+      ]
+    }
+  ],
+  "best_candidate": {
+    "sigma_add": 0.5,
+    "sigma_mult": 0.02,
+    "trace_mean": 0.0026409464391209366,
+    "trace_ci99": [
+      0.002321703848959524,
+      0.002794054607860938
+    ],
+    "score_mean": 24.425,
+    "score_ci99": [
+      22.28,
+      25.9975
+    ],
+    "fit_error_mean": 0.2281118377973109,
+    "fit_error_ci99": [
+      0.1695694326355576,
+      0.2996835175345584
+    ]
+  },
+  "spin_lift_rows": [
+    {
+      "c_lift": 0.002,
+      "delta_score_vs_no_spin": -14.391666666666667,
+      "delta_radial_miss_mm": 2.3619204914420493,
+      "landing_shift_rms_mm": 20.318015648630908
+    },
+    {
+      "c_lift": 0.004,
+      "delta_score_vs_no_spin": -16.875,
+      "delta_radial_miss_mm": 8.908548196464764,
+      "landing_shift_rms_mm": 40.64302491198632
+    },
+    {
+      "c_lift": 0.006,
+      "delta_score_vs_no_spin": -7.958333333333334,
+      "delta_radial_miss_mm": 18.732863882668042,
+      "landing_shift_rms_mm": 60.98203968941457
+    },
+    {
+      "c_lift": 0.008,
+      "delta_score_vs_no_spin": -6.833333333333334,
+      "delta_radial_miss_mm": 31.036650913812892,
+      "landing_shift_rms_mm": 81.34210695697483
+    },
+    {
+      "c_lift": 0.01,
+      "delta_score_vs_no_spin": -10.750000000000002,
+      "delta_radial_miss_mm": 45.198849537295516,
+      "landing_shift_rms_mm": 101.73032784721316
+    }
+  ],
+  "trace_relative_error_best": 0.07911890874471991,
+  "phase_pass": true
+}
