@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Claude
+.claude/
+MEMORY.md
+project_dart_status.md
+project_files_changed.md
+project_forward_throw_analysis.md
+project_assignment_context_from_pdf.md
+overhand_throw_kinematics.md
+
+# IDE
+.vscode/
+.idea/
+
+# Shell / personal config
+.bash_profile
+.bashrc
+.zshrc
+.zprofile
+.profile
+.gitconfig
+.gitmodules
+.mcp.json
+.ripgreprc

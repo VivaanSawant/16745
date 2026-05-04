@@ -36,6 +36,37 @@ def landing_deltas_for_release_SPEC(s6: np.ndarray, wind_xyz=(0.0, 0.0, 0.0), dr
     return np.array([info["delta_y_m"], info["delta_z_m"]], dtype=float)
 
 
+def landing_info_for_release_SPEC(
+    s6: np.ndarray,
+    wind_xyz=(0.0, 0.0, 0.0),
+    drag_enabled: bool = True,
+) -> dict:
+    """
+    Return a compact landing record for one release state.
+
+    The `"landing_m"` entry is NaN for misses so downstream covariance estimates can
+    decide explicitly whether to ignore misses or impute them.
+    """
+    s6 = np.asarray(s6, dtype=float).reshape(6)
+    info = integrate_until_board_SPEC(s6, wind_xyz_mps=wind_xyz, drag_enabled=drag_enabled)
+    if not info["hit"]:
+        return {
+            "hit": False,
+            "landing_m": np.array([np.nan, np.nan], dtype=float),
+            "delta_y_m": np.nan,
+            "delta_z_m": np.nan,
+            "hit_info": info,
+        }
+    landing = np.array([info["delta_y_m"], info["delta_z_m"]], dtype=float)
+    return {
+        "hit": True,
+        "landing_m": landing,
+        "delta_y_m": float(landing[0]),
+        "delta_z_m": float(landing[1]),
+        "hit_info": info,
+    }
+
+
 def jacobian_landing_wrt_release_SPEC(
     s6: np.ndarray,
     eps: float = 1e-4,
@@ -59,6 +90,97 @@ def jacobian_landing_wrt_release_SPEC(
 def predicted_landing_covariance_SPEC(J: np.ndarray, Sigma_release6: np.ndarray) -> np.ndarray:
     """**PDF C2:** Σ_land = J Σ_release Jᵀ (Σ_release is 6×6)."""
     return J @ Sigma_release6 @ J.T
+
+
+def empirical_landing_covariance_SPEC(
+    landings_m: np.ndarray,
+    hit_mask: np.ndarray | None = None,
+) -> np.ndarray:
+    """
+    Empirical 2×2 covariance of landing deltas.
+
+    Misses should generally be excluded from first-order local covariance studies,
+    so callers can pass `hit_mask` or simply provide rows with NaNs.
+    """
+    landings_m = np.asarray(landings_m, dtype=float)
+    if landings_m.size == 0:
+        return np.zeros((2, 2))
+    if hit_mask is not None:
+        mask = np.asarray(hit_mask, dtype=bool).reshape(-1)
+    else:
+        mask = np.all(np.isfinite(landings_m), axis=1)
+    valid = landings_m[mask]
+    if valid.shape[0] <= 1:
+        return np.zeros((2, 2))
+    return np.cov(valid.T)
+
+
+def release_variance_contributions_SPEC(
+    J: np.ndarray,
+    Sigma_release6: np.ndarray,
+    labels: tuple[str, ...] = ("x", "y", "z", "vx", "vy", "vz"),
+) -> list[dict]:
+    """
+    Rank release-state components by their diagonal-only contribution to landing spread.
+
+    This is a local first-order sensitivity heuristic that is especially useful for
+    deciding what an RL reward or curriculum should focus on first.
+    """
+    J = np.asarray(J, dtype=float).reshape(2, 6)
+    Sigma_release6 = np.asarray(Sigma_release6, dtype=float).reshape(6, 6)
+    rows = []
+    for idx, label in enumerate(labels):
+        sigma_ii = float(Sigma_release6[idx, idx])
+        isolated = np.zeros((6, 6), dtype=float)
+        isolated[idx, idx] = sigma_ii
+        cov_i = J @ isolated @ J.T
+        rows.append({
+            "label": label,
+            "release_variance": sigma_ii,
+            "landing_trace_contribution": float(np.trace(cov_i)),
+            "landing_covariance": cov_i,
+        })
+    rows.sort(key=lambda row: row["landing_trace_contribution"], reverse=True)
+    return rows
+
+
+def summarize_release_robustness_SPEC(
+    nominal_release6: np.ndarray,
+    release_states6: np.ndarray,
+    landings_m: np.ndarray,
+    scores: np.ndarray,
+    hit_mask: np.ndarray | None = None,
+    wind_xyz=(0.0, 0.0, 0.0),
+    drag_enabled: bool = True,
+) -> dict:
+    """
+    Bundle the main C2 quantities into one RL-friendly summary dict.
+    """
+    nominal_release6 = np.asarray(nominal_release6, dtype=float).reshape(6)
+    release_states6 = np.asarray(release_states6, dtype=float)
+    landings_m = np.asarray(landings_m, dtype=float)
+    scores = np.asarray(scores, dtype=float)
+    if hit_mask is None:
+        hit_mask = np.all(np.isfinite(landings_m), axis=1)
+    else:
+        hit_mask = np.asarray(hit_mask, dtype=bool).reshape(-1)
+
+    Sigma_release = np.cov(release_states6.T) if release_states6.shape[0] > 1 else np.zeros((6, 6))
+    J = jacobian_landing_wrt_release_SPEC(nominal_release6, wind_xyz=wind_xyz, drag_enabled=drag_enabled)
+    Sigma_land_predicted = predicted_landing_covariance_SPEC(J, Sigma_release)
+    Sigma_land_empirical = empirical_landing_covariance_SPEC(landings_m, hit_mask=hit_mask)
+    return {
+        "jacobian_2x6": J,
+        "Sigma_release_6x6": Sigma_release,
+        "Sigma_land_predicted_2x2": Sigma_land_predicted,
+        "Sigma_land_empirical_2x2": Sigma_land_empirical,
+        "sensitivity_ranking": release_variance_contributions_SPEC(J, Sigma_release),
+        "hit_rate": float(np.mean(hit_mask)) if hit_mask.size else 0.0,
+        "mean_score": float(np.mean(scores)) if scores.size else 0.0,
+        "std_score": float(np.std(scores)) if scores.size else 0.0,
+        "n_samples": int(scores.size),
+        "n_hits": int(np.sum(hit_mask)),
+    }
 
 
 def minimize_negative_mc_score_stub_SPEC(

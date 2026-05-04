@@ -33,7 +33,10 @@ HAND_MASS_KG = 0.4  # includes dart ~22 g per PDF
 import math
 
 SHOULDER_LIMIT_DEG = (-60.0, 180.0)
-ELBOW_LIMIT_DEG = (0.0, 145.0)
+# Elbow convention in this repo: q_elbow=0 means forearm is parallel to upper arm.
+# Negative values correspond to a "raised" forearm (wrist above elbow), which matches
+# a human dart throw better than allowing the forearm to rotate downward past parallel.
+ELBOW_LIMIT_DEG = (-145.0, 0.0)
 WRIST_LIMIT_DEG = (-70.0, 70.0)
 
 def _deg2rad(a, b):
@@ -66,8 +69,10 @@ N_POLICY_PARAMETERS = 9  # 3 joints × 3 knots
 RELEASE_TIME_SIGMA_S = 0.01
 
 # --- Track A3: keyframe "cocked" pose (degrees, PDF A2) ---
-KEYFRAME_SHOULDER_DEG = -30.0
-KEYFRAME_ELBOW_DEG = 90.0
+# Overhand-throw starting posture: shoulder raised near its -60° limit so the
+# arm clearly swings from above the bullseye height (z≈1.75) down to release.
+KEYFRAME_SHOULDER_DEG = -55.0
+KEYFRAME_ELBOW_DEG = -90.0
 KEYFRAME_WRIST_DEG = -20.0
 
 # --- Track B1: dart point mass ---

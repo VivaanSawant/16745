@@ -2,6 +2,8 @@
 Physics simulator demo: 3D throw, dartboard scoring, hit any target, variance/Monte Carlo.
 """
 import numpy as np
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from physics.dartboard import score_at, get_target_center, BOARD_RADIUS

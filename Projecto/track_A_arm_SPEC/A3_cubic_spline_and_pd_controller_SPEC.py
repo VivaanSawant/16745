@@ -151,6 +151,159 @@ def perturb_torque_SPEC(tau: np.ndarray, rng: np.random.Generator, sigma_add=0.5
     return tau + noise
 
 
+_XML_PATH = Path(__file__).parent / "A2_mujoco_mjcf_3link_arm_SPEC.xml"
+
+# Tuned MuJoCo defaults for a forward board-facing throw. The PDF's baseline PD values
+# remain documented above; these are the current working rollout defaults for the full MJCF sim.
+DEFAULT_MUJOCO_THROW_KNOTS_SPEC = np.radians(np.array([
+    -12.0,  -3.0,  8.0,  # shoulder: 43° initial error from -55° keyframe drives overhand swing
+   -115.0, -35.0, -4.0,  # elbow: aggressive extension toward parallel (0°) without going downward
+      0.0,  20.0, 30.0,  # wrist: late forward snap
+], dtype=float))
+DEFAULT_MUJOCO_PD_KP_SPEC = 350.0
+DEFAULT_MUJOCO_PD_KD_SPEC = 1.5
+
+# A4 visual preset: releases higher and keeps the shoulder negative longer so the
+# stick figure reads more like an overhand dart throw than the score-first default.
+DEFAULT_MUJOCO_OVERHAND_THROW_KNOTS_SPEC = np.radians(np.array([
+    -32.0, -26.0, -7.0,
+   -125.0, -40.0, -4.0,
+    -10.0,   1.0, 19.0,
+], dtype=float))
+DEFAULT_MUJOCO_OVERHAND_PD_KP_SPEC = 349.0
+DEFAULT_MUJOCO_OVERHAND_PD_KD_SPEC = 1.89
+DEFAULT_MUJOCO_OVERHAND_RELEASE_TIME_S_SPEC = 0.10
+
+
+def simulate_throw_mujoco_SPEC(
+    knots9: np.ndarray,
+    q_start3: np.ndarray | None = None,
+    xml_path: "str | Path | None" = None,
+    duration_s: float | None = None,
+    release_time_s: float | None = None,
+    rng: "np.random.Generator | None" = None,
+    torque_noise: bool = False,
+    kp: float | None = None,
+    kd: float | None = None,
+    enforce_joint_limits: bool = True,
+) -> dict:
+    """
+    Full MuJoCo arm simulation using A2_mujoco_mjcf_3link_arm_SPEC.xml.
+
+    Replaces the crude diagonal inertia in simulate_throw_pd_SPEC with real capsule
+    inertias (inertiafromgeom=true) and joint-limit constraints from the MJCF.
+    Interface is identical so callers can swap either function.
+
+    Key steps per timestep:
+      1. Read current qpos/qvel from MuJoCo data.
+      2. Evaluate cubic-spline desired trajectory at current t.
+      3. Compute PD torque; optionally add noise via perturb_torque_SPEC.
+      4. Write to d.ctrl (MuJoCo clips to ctrlrange from the XML automatically).
+      5. Call mj_step — advances the full rigid-body dynamics.
+      6. At t >= t_r: read release_site world position from d.site_xpos and
+         translational velocity via mj_jacSite * qvel.
+
+    The default gains used here are intentionally lower-damped than the PDF starter
+    values so the elbow can reach a forward release velocity.
+    """
+    import mujoco  # optional: only imported here to keep mujoco non-required
+
+    xml_path = Path(xml_path) if xml_path else _XML_PATH
+    m = mujoco.MjModel.from_xml_path(str(xml_path))
+    d = mujoco.MjData(m)
+
+    rng = rng or np.random.default_rng()
+    duration_s = THROW_DURATION_S if duration_s is None else duration_s
+    if release_time_s is None:
+        t_nom = 0.85 * duration_s
+        t_r = max(m.opt.timestep, t_nom + RELEASE_TIME_SIGMA_S * rng.standard_normal())
+    else:
+        t_r = max(m.opt.timestep, float(release_time_s))
+
+    if q_start3 is None:
+        mujoco.mj_resetDataKeyframe(m, d, 0)  # "cocked" keyframe
+        d.qvel[:] = 0.0
+        q_start3 = d.qpos[:3].copy()
+        mujoco.mj_forward(m, d)
+    else:
+        q_start3 = np.asarray(q_start3, dtype=float).reshape(3)
+        d.qpos[:3] = q_start3
+        d.qvel[:] = 0.0
+        mujoco.mj_forward(m, d)
+
+    release_id = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_SITE, "release_site")
+    jacp = np.zeros((3, m.nv))
+
+    ts: list[float] = []
+    qs: list[np.ndarray] = []
+    taus: list[np.ndarray] = []
+    release_state6: np.ndarray | None = None
+    t = 0.0
+
+    while t <= duration_s + 3 * m.opt.timestep:
+        q = d.qpos[:3].copy()
+        qd = d.qvel[:3].copy()
+
+        q_des, qd_des = cubic_spline_q_des_SPEC(t, q_start3, knots9, duration_s)
+        tau = pd_torque_SPEC(
+            q,
+            qd,
+            q_des,
+            qd_des,
+            kp=DEFAULT_MUJOCO_PD_KP_SPEC if kp is None else kp,
+            kd=DEFAULT_MUJOCO_PD_KD_SPEC if kd is None else kd,
+        )
+        if torque_noise:
+            tau = perturb_torque_SPEC(tau, rng)
+
+        ts.append(t)
+        qs.append(q.copy())
+        taus.append(tau.copy())
+
+        if release_state6 is None and t >= t_r:
+            # Capture release: site position from MuJoCo FK, velocity via geometric Jacobian
+            mujoco.mj_jacSite(m, d, jacp, None, release_id)
+            pos = d.site_xpos[release_id].copy()
+            vel = jacp @ d.qvel
+            release_state6 = np.concatenate([pos, vel])
+
+        d.ctrl[:] = tau  # MuJoCo clips to ctrlrange in the XML
+        mujoco.mj_step(m, d)
+
+        if enforce_joint_limits:
+            # MuJoCo's joint limits are soft constraints; under aggressive control they can
+            # be violated slightly. For our dart-throw kinematics we want a hard floor on:
+            # - elbow extension (q_elbow >= 0): forearm never hyper-extends past parallel
+            # - wrist range: keep within modeled anatomical range
+            q = d.qpos[:3]
+            qd = d.qvel[:3]
+            for j, (lo, hi) in enumerate(m.jnt_range[:3]):
+                if not m.jnt_limited[j]:
+                    continue
+                if q[j] < lo:
+                    q[j] = lo
+                    qd[j] = 0.0
+                elif q[j] > hi:
+                    q[j] = hi
+                    qd[j] = 0.0
+            d.qpos[:3] = q
+            d.qvel[:3] = qd
+            mujoco.mj_forward(m, d)
+
+        t += m.opt.timestep
+
+        if t > duration_s + 0.05 and release_state6 is not None:
+            break
+
+    return {
+        "times": np.array(ts),
+        "q": np.array(qs),
+        "tau": np.array(taus),
+        "release_time_s": t_r,
+        "release_state6": release_state6,
+    }
+
+
 def simulate_throw_pd_SPEC(
     knots9: np.ndarray,
     q_start3: np.ndarray,

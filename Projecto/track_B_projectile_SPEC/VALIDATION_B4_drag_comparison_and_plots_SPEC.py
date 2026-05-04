@@ -79,6 +79,8 @@ def drag_on_off_comparison_SPEC():
 
 def save_plots_SPEC():
     """Save PNGs into `Projecto/artifacts_SPEC/` (created on demand)."""
+    import matplotlib
+    matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
     out_dir = _ROOT / "artifacts_SPEC"
