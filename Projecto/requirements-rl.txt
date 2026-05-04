@@ -1,0 +1,4 @@
+# Optional RL stack (matches pyproject optional-dependencies [rl]); pip install -e ".[rl]"
+gymnasium>=0.29.0
+stable-baselines3>=2.2.0
+shimmy>=0.2.0

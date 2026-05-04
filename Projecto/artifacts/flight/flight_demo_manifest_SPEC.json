@@ -1,0 +1,22 @@
+{
+  "stage": "flight_projectile_validation",
+  "metrics": {
+    "drag_on_delta_y_m": 0.0,
+    "drag_on_delta_z_m": -0.27016614904228975,
+    "drag_off_delta_y_m": 0.0,
+    "drag_off_delta_z_m": -0.26440973553718994,
+    "landing_delta_mm": 5.756413505099811,
+    "landing_delta_y_m": 0.0,
+    "landing_delta_z_m": -0.27016614904228975
+  },
+  "artifacts": [
+    {
+      "path": "/home/rickycastr0/DartsProject/Project/16745/Projecto/artifacts_SPEC/flight/flight_side_view_xz_SPEC.png",
+      "caption": "B4 side view trajectory (x-z) with board plane reference."
+    },
+    {
+      "path": "/home/rickycastr0/DartsProject/Project/16745/Projecto/artifacts_SPEC/flight/flight_board_view_deltas_SPEC.png",
+      "caption": "B4 board-frame landing point (\u0394y, \u0394z)."
+    }
+  ]
+}

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dart Robot Visual Demo</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 28px 20px 40px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 2rem;
+    }
+    p.lead {
+      margin: 0 0 24px;
+      color: #a5b4fc;
+    }
+    section.stage, section.warning {
+      background: #111827;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 18px;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .card {
+      background: #1e293b;
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .card ul {
+      margin: 8px 0 0;
+      padding-left: 18px;
+    }
+    .media-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 12px;
+    }
+    figure {
+      margin: 0;
+      background: #020617;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 8px;
+    }
+    img, video {
+      width: 100%;
+      display: block;
+      border-radius: 6px;
+      background: #000;
+    }
+    figcaption {
+      margin-top: 6px;
+      color: #cbd5e1;
+      font-size: 0.92rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Dart Robot Visual Demo</h1>
+    <p class="lead">Trajectory, arm motion, and Monte Carlo behavior in one view.</p>
+    
+    
+    <section class="stage">
+      <h2>flight_projectile_validation</h2>
+      <div class="row">
+        <div class="card">
+          <h3>Key Metrics</h3>
+          <ul><li><strong>drag_on_delta_y_m</strong>: 0.0000</li>
+<li><strong>drag_on_delta_z_m</strong>: -0.2702</li>
+<li><strong>drag_off_delta_y_m</strong>: 0.0000</li>
+<li><strong>drag_off_delta_z_m</strong>: -0.2644</li>
+<li><strong>landing_delta_mm</strong>: 5.7564</li>
+<li><strong>landing_delta_y_m</strong>: 0.0000</li>
+<li><strong>landing_delta_z_m</strong>: -0.2702</li></ul>
+        </div>
+      </div>
+      <div class="media-grid">
+        <figure><img src="flight/flight_side_view_xz_SPEC.png" alt="B4 side view trajectory (x-z) with board plane reference."><figcaption>B4 side view trajectory (x-z) with board plane reference.</figcaption></figure><figure><img src="flight/flight_board_view_deltas_SPEC.png" alt="B4 board-frame landing point (Δy, Δz)."><figcaption>B4 board-frame landing point (Δy, Δz).</figcaption></figure>
+      </div>
+    </section>
+    
+
+    <section class="stage">
+      <h2>motion_workspace_and_throw</h2>
+      <div class="row">
+        <div class="card">
+          <h3>Key Metrics</h3>
+          <ul><li><strong>workspace_max_x_m</strong>: 0.5753</li>
+<li><strong>workspace_max_z_m</strong>: 2.0863</li>
+<li><strong>release_speed_mps</strong>: 5.1736</li>
+<li><strong>release_state6</strong>: [0.1639, -0.0116, 2.0832, 5.1599, -0.3761, -0.0145]</li>
+<li><strong>sat_ratio</strong>: [0.0000, 0.0000, 0.0000, 0.7143]</li></ul>
+        </div>
+      </div>
+      <div class="media-grid">
+        <figure><img src="motion/motion_throw_stick_figure_SPEC.png" alt="A4 stick-figure throw with release/board annotations."><figcaption>A4 stick-figure throw with release/board annotations.</figcaption></figure><figure><video controls preload="metadata"><source src="motion/motion_throw_video_SPEC.mp4"></video><figcaption>A4 MuJoCo replay video of the throwing motion.</figcaption></figure>
+      </div>
+    </section>
+    
+
+    <section class="stage">
+      <h2>integration_end_to_end</h2>
+      <div class="row">
+        <div class="card">
+          <h3>Key Metrics</h3>
+          <ul><li><strong>nominal_score</strong>: 0.0000</li>
+<li><strong>mc_mean_score</strong>: 6.7500</li>
+<li><strong>mc_std_score</strong>: 3.5338</li>
+<li><strong>mc_covariance_deltay_deltaz</strong>: [[1.6860751386885904e-06, 5.909582987854663e-06], [5.909582987854663e-06, 0.0011996494223925696]]</li></ul>
+        </div>
+      </div>
+      <div class="media-grid">
+        <figure><img src="integration/integration_monte_carlo_board_scatter_SPEC.png" alt="C1 board-view Monte Carlo landing scatter."><figcaption>C1 board-view Monte Carlo landing scatter.</figcaption></figure><figure><img src="integration/integration_monte_carlo_score_hist_SPEC.png" alt="C1 histogram of per-throw dartboard scores."><figcaption>C1 histogram of per-throw dartboard scores.</figcaption></figure>
+      </div>
+    </section>
+    
+  </main>
+</body>
+</html>

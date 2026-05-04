@@ -1,0 +1,32 @@
+{
+  "stage": "motion_workspace_and_throw",
+  "metrics": {
+    "workspace_max_x_m": 0.575328866221133,
+    "workspace_max_z_m": 2.08630628431166,
+    "release_speed_mps": 5.173649145703572,
+    "release_state6": [
+      0.16393995740258382,
+      -0.011557299372455287,
+      2.0832389774699442,
+      5.159943837708764,
+      -0.37605202956246586,
+      -0.014489499390949456
+    ],
+    "sat_ratio": [
+      0.0,
+      0.0,
+      0.0,
+      0.7142857142857143
+    ]
+  },
+  "artifacts": [
+    {
+      "path": "/home/rickycastr0/DartsProject/Project/16745/Projecto/artifacts_SPEC/motion/motion_throw_stick_figure_SPEC.png",
+      "caption": "A4 stick-figure throw with release/board annotations."
+    },
+    {
+      "path": "/home/rickycastr0/DartsProject/Project/16745/Projecto/artifacts_SPEC/motion/motion_throw_video_SPEC.mp4",
+      "caption": "A4 MuJoCo replay video of the throwing motion."
+    }
+  ]
+}

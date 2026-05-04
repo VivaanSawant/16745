@@ -1,0 +1,9 @@
+{
+  "showcase_html": "/home/rickycastr0/DartsProject/Project/16745/Projecto/artifacts_SPEC/demo/dart_robot_visual_demo_SPEC.html",
+  "loaded_stages": [
+    "flight_projectile_validation",
+    "motion_workspace_and_throw",
+    "integration_end_to_end"
+  ],
+  "missing_manifests": []
+}

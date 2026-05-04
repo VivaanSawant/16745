@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dartrobot"
+version = "0.1.0"
+description = "CMU 16-745 dart-throwing robot SPEC: motion, flight, integration, optional RL"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.20",
+    "scipy>=1.7",
+    "matplotlib>=3.5",
+    "mujoco>=3.0",
+]
+
+[project.optional-dependencies]
+rl = [
+    "gymnasium>=0.29",
+    "stable-baselines3>=2.0",
+]
+dev = [
+    "pytest>=7.0",
+]
+
+[project.scripts]
+dartrobot = "dartrobot.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+dartrobot = ["motion/mjcf/*.xml"]

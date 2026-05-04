@@ -1,0 +1,39 @@
+{
+  "target_set": "bulls",
+  "n_targets": 2,
+  "gate_mm": 300.0,
+  "n_within_gate": 2,
+  "fraction_within_gate": 1.0,
+  "release_time_grid": [
+    0.05,
+    0.075,
+    0.1,
+    0.125,
+    0.15
+  ],
+  "cache_path": "/home/rickycastr0/DartsProject/Project/16745/Projecto/artifacts_SPEC/baseline/strong_baseline_cache.pkl",
+  "rows": [
+    {
+      "preset": "BULL",
+      "dy_m": 0.0,
+      "dz_m": 0.0,
+      "r_mm": 13.733522643082784,
+      "release_time_s": 0.075,
+      "face_hit": true,
+      "score": 25,
+      "fun": 0.00018860964418806754,
+      "cached": false
+    },
+    {
+      "preset": "SBULL",
+      "dy_m": 0.0,
+      "dz_m": 0.011125,
+      "r_mm": 17.603305962837357,
+      "release_time_s": 0.075,
+      "face_hit": true,
+      "score": 9,
+      "fun": 0.00018629011407007734,
+      "cached": false
+    }
+  ]
+}

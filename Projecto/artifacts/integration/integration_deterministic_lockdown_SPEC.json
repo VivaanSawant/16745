@@ -1,0 +1,86 @@
+{
+  "phase": "deterministic_lockdown",
+  "checks": {
+    "fk_position_error_inf_m": 4.440892098500626e-16,
+    "fk_velocity_error_inf_mps": 1.7763568394002505e-15,
+    "golden_rel_release": 1.0425553742846531e-07,
+    "golden_rel_q": 2.090525204848309e-06,
+    "golden_max_sat_ratio": 0.7142857142857143
+  },
+  "matrix_rows": [
+    {
+      "xml": "standard",
+      "use_feedforward": false,
+      "release_time_s": 0.0761809061781466,
+      "release_speed_mps": 6.75170256255483,
+      "release_vx_mps": 5.964289239204972,
+      "pass": true,
+      "reason": "ok"
+    },
+    {
+      "xml": "standard",
+      "use_feedforward": false,
+      "release_time_s": 0.1,
+      "release_speed_mps": 5.173649217757026,
+      "release_vx_mps": 5.1599439096031325,
+      "pass": true,
+      "reason": "ok"
+    },
+    {
+      "xml": "standard",
+      "use_feedforward": true,
+      "release_time_s": 0.0761809061781466,
+      "release_speed_mps": 5.520285967709351,
+      "release_vx_mps": 5.448178600054867,
+      "pass": true,
+      "reason": "ok"
+    },
+    {
+      "xml": "standard",
+      "use_feedforward": true,
+      "release_time_s": 0.1,
+      "release_speed_mps": 5.193938573419717,
+      "release_vx_mps": 4.884989331381801,
+      "pass": true,
+      "reason": "ok"
+    },
+    {
+      "xml": "tall",
+      "use_feedforward": false,
+      "release_time_s": 0.0761809061781466,
+      "release_speed_mps": 6.751701847340733,
+      "release_vx_mps": 5.964288699598906,
+      "pass": true,
+      "reason": "ok"
+    },
+    {
+      "xml": "tall",
+      "use_feedforward": false,
+      "release_time_s": 0.1,
+      "release_speed_mps": 5.173649145703572,
+      "release_vx_mps": 5.159943837708764,
+      "pass": true,
+      "reason": "ok"
+    },
+    {
+      "xml": "tall",
+      "use_feedforward": true,
+      "release_time_s": 0.0761809061781466,
+      "release_speed_mps": 5.5202822676906464,
+      "release_vx_mps": 5.448174625249747,
+      "pass": true,
+      "reason": "ok"
+    },
+    {
+      "xml": "tall",
+      "use_feedforward": true,
+      "release_time_s": 0.1,
+      "release_speed_mps": 5.193843839168826,
+      "release_vx_mps": 4.884894432601199,
+      "pass": true,
+      "reason": "ok"
+    }
+  ],
+  "matrix_pass_rate": 1.0,
+  "phase_pass": true
+}

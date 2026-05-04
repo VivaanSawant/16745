@@ -1,4 +1,18 @@
-# Dart-throwing robot project
+Metadata-Version: 2.4
+Name: dartrobot
+Version: 0.1.0
+Summary: CMU 16-745 dart-throwing robot SPEC: motion, flight, integration, optional RL
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: numpy>=1.20
+Requires-Dist: scipy>=1.7
+Requires-Dist: matplotlib>=3.5
+Requires-Dist: mujoco>=3.0
+Provides-Extra: rl
+Requires-Dist: gymnasium>=0.29; extra == "rl"
+Requires-Dist: stable-baselines3>=2.0; extra == "rl"
+
+# Dart-throwing robot (CMU 16-745 SPEC)
 
 Single installable Python package **`dartrobot`** (motion → flight → integration → optional RL). Legacy `physics/` and duplicate phase folders were removed; use this README and [`HIGH_LEVEL_CONTROL_STRATEGY.md`](HIGH_LEVEL_CONTROL_STRATEGY.md) as the entry points.
 
@@ -7,8 +21,7 @@ Single installable Python package **`dartrobot`** (motion → flight → integra
 ```bash
 cd Projecto   # repo root
 python3 -m venv .venv && source .venv/bin/activate
-python3 -m pip install --upgrade "pip>=24" "setuptools>=64"   # PEP 660 editable installs
-pip install -e ".[rl,dev]"      # core + RL + pytest
+pip install -e ".[rl]"          # core + optional SB3 / Gymnasium
 dartrobot --help
 dartrobot mc --preset t10 --n 50 --seed 0
 dartrobot demo --quick
@@ -16,8 +29,6 @@ pytest tests/motion/regression_suite.py -q
 ```
 
 Install core only (no RL): `pip install -e .`
-
-If `pip install -e` errors with **missing `build_editable` hook**, your `pip`/`setuptools` are too old — run the `python3 -m pip install --upgrade …` line above, then retry.
 
 ## Layout
 

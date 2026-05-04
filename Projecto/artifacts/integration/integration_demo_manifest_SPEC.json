@@ -1,0 +1,28 @@
+{
+  "stage": "integration_end_to_end",
+  "metrics": {
+    "nominal_score": 0.0,
+    "mc_mean_score": 6.75,
+    "mc_std_score": 3.533765696816924,
+    "mc_covariance_deltay_deltaz": [
+      [
+        1.6860751386885904e-06,
+        5.909582987854663e-06
+      ],
+      [
+        5.909582987854663e-06,
+        0.0011996494223925696
+      ]
+    ]
+  },
+  "artifacts": [
+    {
+      "path": "/home/rickycastr0/DartsProject/Project/16745/Projecto/artifacts_SPEC/integration/integration_monte_carlo_board_scatter_SPEC.png",
+      "caption": "C1 board-view Monte Carlo landing scatter."
+    },
+    {
+      "path": "/home/rickycastr0/DartsProject/Project/16745/Projecto/artifacts_SPEC/integration/integration_monte_carlo_score_hist_SPEC.png",
+      "caption": "C1 histogram of per-throw dartboard scores."
+    }
+  ]
+}

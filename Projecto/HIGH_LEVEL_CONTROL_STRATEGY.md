@@ -5,8 +5,8 @@
 This dart-throwing system is best treated as a **structured stochastic control problem** rather than a monolithic black-box policy search.  
 The repository already contains two distinct regimes:
 
-1. **Arm dynamics and release generation** (`track_A_arm_SPEC/`): nonlinear, noisy, actuator-constrained.
-2. **Flight and scoring dynamics** (`track_B_projectile_SPEC/` + `track_C_integration_SPEC/`): explicit physics with known equations and interpretable sensitivity.
+1. **Arm dynamics and release generation** (`dartrobot.motion`): nonlinear, noisy, actuator-constrained.
+2. **Flight and scoring dynamics** (`dartrobot.flight` + `dartrobot.integration`): explicit physics with known equations and interpretable sensitivity.
 
 The most effective architecture is therefore a **hybrid optimal-control plus reinforcement-learning stack**:
 - Optimal control provides nominal trajectories, feasibility, and robustness structure.
@@ -123,10 +123,10 @@ Long-term:
 
 For project reporting and grading consistency, treat the SPEC chain as the only authoritative pipeline:
 
-- `track_A_arm_SPEC` (arm dynamics and release extraction)
-- `track_B_projectile_SPEC` (white-box flight and scoring)
-- `track_C_integration_SPEC` (robustness, optimization, and RL-facing analysis)
-- `artifacts_SPEC/C5_...` through `artifacts_SPEC/C9_...` (pre-RL confidence reports and gate status)
+- `dartrobot.motion` (arm dynamics and release extraction)
+- `dartrobot.flight` (white-box flight and scoring)
+- `dartrobot.integration` (robustness, optimization, and RL-facing analysis)
+- `artifacts/integration/` and `artifacts/spin/` (pre-RL readiness reports and spin evidence)
 
 Legacy `physics/` modules remain useful for prototypes, but they should not be mixed into quantitative claims for the SPEC-based deliverable.
 
@@ -134,13 +134,13 @@ Legacy `physics/` modules remain useful for prototypes, but they should not be m
 
 ## Pre-RL Confidence Gate Status
 
-The formal C5-C9 gate now exists and is executable end-to-end:
+The formal integration readiness gate chain now exists and is executable end-to-end:
 
-- C5 deterministic lockdown: pass.
-- C6 uncertainty calibration with 99% CIs: pass.
-- C7 spin/contact confidence: pass.
-- C8 stress campaign: pass under operational-readiness criteria.
-- C9 handoff: generated with explicit `RL start gate` boolean and recommended randomization ranges.
+- deterministic lockdown: pass.
+- uncertainty calibration with 99% CIs: pass.
+- spin/contact confidence: pass.
+- stress campaign: pass under operational-readiness criteria.
+- pre-RL handoff: generated with explicit `RL start gate` boolean and recommended randomization ranges.
 
 Implication: the simulator/control architecture is now considered ready for RL experimentation; the next phase is training-policy implementation and comparative evaluation.
 
@@ -155,7 +155,7 @@ Implication: the simulator/control architecture is now considered ready for RL e
 
 ## Paper framing notes
 
-- Emphasize that C5-C9 constitutes a pre-training validation harness, not the final performance benchmark.
+- Emphasize that the integration readiness chain constitutes a pre-training validation harness, not the final performance benchmark.
 - Explain that C8 now encodes operational robustness (for agent readiness) rather than strict model-perfect statistical confidence.
 - Report both strengths (deterministic correctness, uncertainty calibration, spin-contact evidence) and open risks (local linearization, retraining after retunes).
 
