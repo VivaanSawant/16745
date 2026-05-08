@@ -12,7 +12,7 @@ class Config:
     # Environment
     max_steps: int = 80
     dt: float = 0.04
-    release_threshold: float = 0.75
+    release_threshold: float = 0.40
 
     # RL
     gamma: float = 0.99
@@ -29,7 +29,7 @@ class Config:
 
     # Exploration noise (Gaussian on torques, mild on release)
     action_noise_std: float = 0.20
-    release_noise_std: float = 0.05
+    release_noise_std: float = 0.25
     action_noise_clip: float = 0.50
 
     # Training loop

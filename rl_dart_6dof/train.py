@@ -88,6 +88,7 @@ def train(cfg: Config) -> None:
 
     actor = PolicyNet(cfg.state_dim, cfg.action_dim).to(device)
     critic = CriticNet(cfg.state_dim, cfg.action_dim).to(device)
+    target_actor = make_target(actor).to(device)
     target_critic = make_target(critic).to(device)
 
     actor_opt = Adam(actor.parameters(), lr=cfg.actor_lr)
@@ -102,6 +103,8 @@ def train(cfg: Config) -> None:
     ep_reward = 0.0
     ep_len = 0
     best_eval = -1e18
+    releases_in_last = 0
+    episodes_in_last = 0
 
     for step in range(1, cfg.total_env_steps + 1):
         # --- action ---
@@ -121,8 +124,16 @@ def train(cfg: Config) -> None:
         ep_reward += r
         ep_len += 1
         if done:
+            # Track whether this episode actually released
+            # (Using the executed env action's release dim)
+            released = float(a_env[6] >= cfg.release_threshold)
+            releases_in_last += int(released)
+            episodes_in_last += 1
             if step % 1000 == 0:
-                print(f"step={step} last_ep_reward={ep_reward:.3f} ep_len={ep_len}")
+                rel_rate = releases_in_last / max(1, episodes_in_last)
+                print(f"step={step} last_ep_reward={ep_reward:.3f} ep_len={ep_len} release_rate~{rel_rate:.2f}")
+                releases_in_last = 0
+                episodes_in_last = 0
             ep_reward = 0.0
             ep_len = 0
 
@@ -137,7 +148,8 @@ def train(cfg: Config) -> None:
                 bd = to_tensor(b.done, device)
 
                 with torch.no_grad():
-                    next_raw = actor(bns)
+                    # True DDPG target: use target_actor and target_critic
+                    next_raw = target_actor(bns)
                     next_a = env_action_torch(next_raw)
                     target_q = br + cfg.gamma * (1.0 - bd) * target_critic(bns, next_a)
 
@@ -157,6 +169,7 @@ def train(cfg: Config) -> None:
                 actor_opt.step()
 
                 soft_update(target_critic, critic, cfg.tau)
+                soft_update(target_actor, actor, cfg.tau)
 
         if step % cfg.eval_every_steps == 0 and step >= cfg.start_steps:
             stats = evaluate_policy(env, actor, device, cfg.eval_episodes)
@@ -167,6 +180,7 @@ def train(cfg: Config) -> None:
                 torch.save(
                     {
                         "actor": actor.state_dict(),
+                        "target_actor": target_actor.state_dict(),
                         "critic": critic.state_dict(),
                         "target_critic": target_critic.state_dict(),
                         "cfg": asdict(cfg),
@@ -179,6 +193,7 @@ def train(cfg: Config) -> None:
     torch.save(
         {
             "actor": actor.state_dict(),
+            "target_actor": target_actor.state_dict(),
             "critic": critic.state_dict(),
             "target_critic": target_critic.state_dict(),
             "cfg": asdict(cfg),

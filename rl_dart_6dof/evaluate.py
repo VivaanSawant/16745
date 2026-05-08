@@ -57,11 +57,14 @@ def collect_trajectories(
     n_episodes: int,
 ) -> list[dict]:
     runs: list[dict] = []
+    release_flags: list[float] = []
+    landing_dists: list[float] = []
     with torch.no_grad():
         for _ in range(n_episodes):
             log = TrajectoryLogger()
             s = env.reset()
             done = False
+            last_info = None
             while not done:
                 st = to_tensor(s, device=device).unsqueeze(0)
                 raw = actor(st).squeeze(0).cpu().numpy()
@@ -69,7 +72,22 @@ def collect_trajectories(
                 s2, r, done, _ = env.step(a)
                 log.add(s, a, r)
                 s = s2
+                last_info = _["info"]
             runs.append(log.as_arrays())
+            if last_info is not None:
+                release_flags.append(1.0 if last_info.released else 0.0)
+                if last_info.landing_xy is not None:
+                    x, y = last_info.landing_xy
+                    d = float(np.sqrt((x - env.target_x) ** 2 + (y - env.target_y) ** 2))
+                    landing_dists.append(d)
+    if release_flags:
+        runs.append(
+            {
+                "_meta_release_rate": float(np.mean(release_flags)),
+                "_meta_mean_dist": float(np.mean(landing_dists)) if landing_dists else float("nan"),
+                "_meta_std_dist": float(np.std(landing_dists)) if landing_dists else float("nan"),
+            }
+        )
     return runs
 
 
@@ -116,6 +134,9 @@ def main() -> None:
     )
 
     runs = collect_trajectories(env, actor, device, args.episodes)
+    meta = runs[-1] if isinstance(runs[-1], dict) and any(k.startswith("_meta_") for k in runs[-1].keys()) else None
+    if meta is not None:
+        runs = runs[:-1]
 
     # Concatenate all timesteps: state features for PCA (angles + velocities)
     state_rows: list[np.ndarray] = []
@@ -146,6 +167,9 @@ def main() -> None:
     for i, r_i in enumerate(explained[:12], start=1):
         print(f"  PC{i}: {r_i:.4f} (cum: {cumulative[i-1]:.4f})")
     print(f"Effective DOF (95% variance): {dof_95}")
+    if meta is not None:
+        print(f"Release rate: {meta['_meta_release_rate']:.3f}")
+        print(f"Mean landing distance to target (m): {meta['_meta_mean_dist']:.4f} (std {meta['_meta_std_dist']:.4f})")
 
     torque_var = np.var(torque, axis=0)
     print("Per-joint torque variance:")

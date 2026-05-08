@@ -53,6 +53,7 @@ class DartEnv:
         # Throw / board parameters
         self.g = 9.81
         self.release_height = 1.5  # meters above ground plane
+        self.min_release_steps = 10  # prevents trivial immediate-release solutions
 
         # "Dartboard" is on ground plane at y=0, centered at x=target_x
         self.target_x = 3.0
@@ -63,11 +64,21 @@ class DartEnv:
         self._angles = np.zeros(6, dtype=np.float32)
         self._vels = np.zeros(6, dtype=np.float32)
 
-        # Fixed random projection from joint features -> release velocity (structured but simple)
-        # Features: [sin(theta), cos(theta), v] (18 dims) -> v_xyz (3 dims)
-        w = self.rng.normal(0.0, 1.0, size=(3, 18)).astype(np.float32)
-        w /= np.linalg.norm(w, axis=1, keepdims=True) + 1e-8
-        self._W_vel = w
+        # Reward shaping (accuracy-first)
+        # - A dense shaping term uses the distance-to-target you'd get if you released NOW.
+        # - Final reward on release is a sharp function of landing distance (dominant signal).
+        # - Timeout is strongly negative to avoid "never release".
+        self.step_penalty = 0.005
+        self.timeout_penalty = 100.0
+
+        # Distance shaping weights
+        self.shaping_dist_weight = 0.05  # per-step shaping: -w * predicted_dist
+        self.hit_sigma = 0.25  # meters, controls sharpness of hit reward
+        self.release_dist_penalty = 5.0  # subtract on release: encourages accuracy (meters)
+
+        # Note: release velocity model is deterministic and structured to be learnable:
+        # joint0 -> azimuth (left/right), joint1 -> elevation (up/down),
+        # remaining joints/velocities modulate speed.
 
     def reset(self) -> np.ndarray:
         self._t = 0
@@ -91,42 +102,66 @@ class DartEnv:
 
         self._t += 1
 
-        # 2) Release -> simulate projectile and score
+        # 2) Dense shaping: how close we'd land if we released right now
+        pred_xy = self._simulate_landing_xy()
+        pred_dist = float(np.sqrt((pred_xy[0] - self.target_x) ** 2 + (pred_xy[1] - self.target_y) ** 2))
+
+        # 3) Release -> simulate projectile and score
         done = False
-        reward = 0.0
+        # Encourage the policy to eventually raise the release signal after it is allowed to release.
+        can_release = self._t >= self.min_release_steps
+        release_enc = (0.5 * release) if can_release else 0.0
+        reward = -self.step_penalty - self.shaping_dist_weight * pred_dist + float(release_enc)
         info = StepInfo(released=False, landing_xy=None, score=0.0)
 
-        if release >= self.release_threshold or self._t >= self.max_steps:
+        if (can_release and release >= self.release_threshold) or self._t >= self.max_steps:
             done = True
-            released = release >= self.release_threshold
+            released = bool(can_release and release >= self.release_threshold)
             landing = self._simulate_landing_xy()
+            dist = float(np.sqrt((landing[0] - self.target_x) ** 2 + (landing[1] - self.target_y) ** 2))
             score = self._dartboard_score(landing[0], landing[1])
-            # Reward: score if released, otherwise small penalty for timing out
-            reward = float(score if released else 0.1 * score)
+
+            # Reward:
+            # - If released: accuracy-dominant reward based on landing distance, plus a small score term.
+            # - If timed out: strong negative penalty.
+            if released:
+                # Gaussian hit reward in [0, 100], sharply peaked at the target center.
+                hit = 100.0 * float(np.exp(-0.5 * (dist / self.hit_sigma) ** 2))
+                reward = float(hit + 0.2 * score - self.release_dist_penalty * dist)
+            else:
+                reward = float(-self.timeout_penalty)
             info = StepInfo(released=released, landing_xy=landing, score=float(score))
 
-        return self._get_state(), reward, done, {"info": info}
+        return self._get_state(), reward, done, {"info": info, "t": self._t, "pred_dist": pred_dist}
 
     def _get_state(self) -> np.ndarray:
         return np.concatenate([self._angles, self._vels], axis=0).astype(np.float32)
 
     def _release_velocity_xyz(self) -> np.ndarray:
-        # A simple "kinematic" map from joint pose/velocity to a 3D release velocity.
-        s = np.sin(self._angles)
-        c = np.cos(self._angles)
-        feats = np.concatenate([s, c, self._vels], axis=0).astype(np.float32)  # (18,)
-        v = self._W_vel @ feats  # (3,)
+        # Deterministic "throw kinematics" that is easier to learn to aim with.
+        # Azimuth (left/right) and elevation (up/down) come from two joints.
+        az = float(self._angles[0])          # yaw-like
+        el = float(self._angles[1])          # pitch-like
 
-        # Encourage realistic directionality: mostly forward (+x) and mild upward (+z)
-        v[0] = abs(v[0]) + 6.0
-        v[1] = 0.2 * v[1]
-        v[2] = 0.5 * v[2] + 2.0
+        # Map remaining joint speeds into a positive forward speed.
+        # Use a smooth, bounded function so learning is stable.
+        vmag = float(np.linalg.norm(self._vels[2:]))  # joints 2..5 contribute
+        speed = 6.0 + 6.0 * float(np.tanh(0.25 * vmag))  # in ~[6,12)
 
-        # Cap speed to avoid extreme outliers early in training
-        speed = float(np.linalg.norm(v))
-        if speed > 20.0:
-            v *= 20.0 / (speed + 1e-8)
-        return v.astype(np.float32)
+        # Clamp angles to plausible throwing ranges.
+        az = float(np.clip(az, -0.8, 0.8))
+        el = float(np.clip(el, -0.2, 1.0))
+
+        # Convert to Cartesian velocity.
+        vx = speed * float(np.cos(el)) * float(np.cos(az))
+        vy = speed * float(np.cos(el)) * float(np.sin(az))
+        vz = speed * float(np.sin(el)) + 1.5  # baseline upward component
+
+        # Mild caps (safety)
+        vx = float(np.clip(vx, 0.5, 20.0))
+        vy = float(np.clip(vy, -10.0, 10.0))
+        vz = float(np.clip(vz, -2.0, 15.0))
+        return np.asarray([vx, vy, vz], dtype=np.float32)
 
     def _simulate_landing_xy(self) -> tuple[float, float]:
         # Release from origin at height h; land when z(t)=0.
